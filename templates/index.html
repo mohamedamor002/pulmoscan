@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulmoScan | AI-Powered Lung CT Analysis</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Load Cornerstone libraries with proper order -->
+    <script src="https://unpkg.com/dicom-parser@1.8.9/dist/dicomParser.min.js"></script>
+    <script src="https://unpkg.com/cornerstone-core@2.6.1/dist/cornerstone.min.js"></script>
+    <script src="https://unpkg.com/cornerstone-wado-image-loader@4.1.2/dist/cornerstoneWADOImageLoader.min.js"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4895ef;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background-color: #f5f7fa;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 1.5rem 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo-icon {
+            margin-right: 0.5rem;
+            font-size: 2rem;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        
+        nav li {
+            margin-left: 2rem;
+        }
+        
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+        }
+        
+        nav a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .upload-section {
+            background-color: white;
+            border-radius: 10px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            margin-top: 2rem;
+            text-align: center;
+        }
+        
+        .section-title {
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            color: var(--secondary);
+            font-weight: 600;
+        }
+        
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 3rem 2rem;
+            margin-bottom: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .upload-area:hover {
+            border-color: var(--accent);
+            background-color: rgba(72, 149, 239, 0.05);
+        }
+        
+        .upload-icon {
+            font-size: 3rem;
+            color: var(--accent);
+            margin-bottom: 1rem;
+        }
+        
+        .file-input {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);
+        }
+        
+        .btn:hover {
+            background-color: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(67, 97, 238, 0.3);
+        }
+        
+        .btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .viewer-container {
+            margin: 2rem 0;
+            display: none;
+        }
+        
+        #dicomViewer {
+            width: 512px;
+            height: 512px;
+            margin: 0 auto;
+            border-radius: 8px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .results-section {
+            background-color: white;
+            border-radius: 10px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            margin-top: 2rem;
+            display: none;
+        }
+        
+        .result-card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .result-title {
+            font-weight: 600;
+            color: var(--secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 2rem 0;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid var(--primary);
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+            display: none;
+        }
+        
+        .alert-success {
+            background-color: #d1fae5;
+            color: #065f46;
+        }
+        
+        .alert-danger {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🫁</span>
+                <span>PulmoScan</span>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/upload">Analyze</a></li>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="#">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="upload-section">
+            <h2 class="section-title">Upload CT Scan for Analysis</h2>
+            <p>Upload a DICOM file to analyze lung health using our AI-powered system</p>
+            
+            <div class="alert" id="alertBox"></div>
+            
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <h3>Drag & Drop DICOM File Here</h3>
+                <p>or click to browse files</p>
+                <input type="file" id="dicomFile" class="file-input" accept=".dcm" required>
+            </div>
+            
+            <div class="viewer-container" id="viewerContainer">
+                <h3>Scan Preview</h3>
+                <div id="dicomViewer"></div>
+            </div>
+            
+            <button id="analyzeBtn" class="btn" disabled>Analyze Scan</button>
+            
+            <div class="loading" id="loadingIndicator">
+                <div class="spinner"></div>
+                <p>Analyzing your scan...</p>
+            </div>
+        </div>
+        
+        <div class="results-section" id="resultsSection">
+            <h2 class="section-title">Analysis Report</h2>
+            
+            <div class="result-card">
+                <h3 class="result-title">Findings</h3>
+                <p id="findingsText">No significant abnormalities detected</p>
+            </div>
+            
+            <div class="result-card">
+                <h3 class="result-title">Confidence Level</h3>
+                <p id="confidenceText">92%</p>
+            </div>
+            
+            <div class="result-card">
+                <h3 class="result-title">Recommendation</h3>
+                <p id="recommendationText">Routine follow-up recommended</p>
+            </div>
+            
+            <div class="result-card">
+                <h3 class="result-title">Image Quality</h3>
+                <p id="qualityText">Excellent</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Cornerstone
+        cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+        cornerstoneWADOImageLoader.webWorkerManager.initialize({
+            maxWebWorkers: navigator.hardwareConcurrency || 1,
+            startWebWorkersOnDemand: true
+        });
+
+        // DOM Elements
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('dicomFile');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const viewerContainer = document.getElementById('viewerContainer');
+        const dicomViewer = document.getElementById('dicomViewer');
+        const resultsSection = document.getElementById('resultsSection');
+        const alertBox = document.getElementById('alertBox');
+        
+        // Enable the viewer element
+        cornerstone.enable(dicomViewer);
+
+        // Handle file selection
+        fileInput.addEventListener('change', handleFileSelect);
+        
+        // Drag and drop functionality
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#4361ee';
+            uploadArea.style.backgroundColor = 'rgba(67, 97, 238, 0.05)';
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.style.borderColor = '#ccc';
+            uploadArea.style.backgroundColor = '';
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#ccc';
+            uploadArea.style.backgroundColor = '';
+            
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                handleFileSelect({ target: fileInput });
+            }
+        });
+
+        // Handle file selection
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Reset UI
+            hideAlert();
+            resultsSection.style.display = 'none';
+            
+            // Validate file type
+            if (!file.name.toLowerCase().endsWith('.dcm')) {
+                showAlert('Please upload a valid DICOM file (.dcm)', 'danger');
+                return;
+            }
+            
+            // Display loading state
+            analyzeBtn.disabled = true;
+            loadingIndicator.style.display = 'block';
+            
+            // Create a URL for the DICOM file
+            const imageId = cornerstoneWADOImageLoader.wadouri.fileManager.add(file);
+            
+            // Load and display the image
+            cornerstone.loadImage(imageId)
+                .then(function(image) {
+                    console.log("DICOM loaded successfully:", image);
+                    
+                    // Display the image
+                    cornerstone.displayImage(dicomViewer, image);
+                    
+                    // Set optimal viewing parameters for lung CT
+                    const viewport = cornerstone.getViewport(dicomViewer);
+                    viewport.voi.windowWidth = 1500;
+                    viewport.voi.windowCenter = -600;
+                    cornerstone.setViewport(dicomViewer, viewport);
+                    
+                    // Update UI
+                    viewerContainer.style.display = 'block';
+                    analyzeBtn.disabled = false;
+                    loadingIndicator.style.display = 'none';
+                    
+                    // Update upload area display
+                    uploadArea.innerHTML = `
+                        <div class="upload-icon">✓</div>
+                        <h3>${file.name}</h3>
+                        <p>Ready for analysis</p>
+                    `;
+                })
+                .catch(function(error) {
+                    console.error("Error loading DICOM:", error);
+                    showAlert('Error: Could not load DICOM file. Please try another file.', 'danger');
+                    loadingIndicator.style.display = 'none';
+                });
+        }
+
+        // Handle analyze button click
+        analyzeBtn.addEventListener('click', function() {
+            const file = fileInput.files[0];
+            if (!file) {
+                showAlert('Please select a DICOM file first', 'danger');
+                return;
+            }
+            
+            // Show loading state
+            analyzeBtn.disabled = true;
+            loadingIndicator.style.display = 'block';
+            hideAlert();
+            
+            // Prepare form data
+            const formData = new FormData();
+            formData.append('dicomFile', file);
+            
+            // Send to backend
+            fetch('/analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.message);
+                }
+                
+                // Display results
+                displayResults(data.report);
+                showAlert('Analysis complete!', 'success');
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showAlert(error.message || 'An error occurred during analysis', 'danger');
+            })
+            .finally(() => {
+                loadingIndicator.style.display = 'none';
+                analyzeBtn.disabled = false;
+            });
+        });
+
+        // Display analysis results
+        function displayResults(report) {
+            document.getElementById('findingsText').textContent = report.findings;
+            document.getElementById('confidenceText').textContent = report.confidence;
+            document.getElementById('recommendationText').textContent = report.recommendation;
+            document.getElementById('qualityText').textContent = report.image_quality;
+            
+            resultsSection.style.display = 'block';
+            
+            // Smooth scroll to results
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            alertBox.textContent = message;
+            alertBox.className = `alert alert-${type}`;
+            alertBox.style.display = 'block';
+        }
+
+        // Hide alert
+        function hideAlert() {
+            alertBox.style.display = 'none';
+        }
+    </script>
+    <script>
+        // Wait for all libraries to load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if all required libraries are loaded
+            if (typeof cornerstone === 'undefined' || 
+                typeof cornerstoneWADOImageLoader === 'undefined') {
+                console.error('Cornerstone libraries failed to load!');
+                showAlert('Failed to load required components. Please refresh the page.', 'danger');
+                return;
+            }
+    
+            // Initialize Cornerstone
+            cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+            cornerstoneWADOImageLoader.webWorkerManager.initialize({
+                maxWebWorkers: navigator.hardwareConcurrency || 1,
+                startWebWorkersOnDemand: true
+            });
+    
+            // [Rest of your existing JavaScript code]
+        });
+    </script>
+</body>
+</html>

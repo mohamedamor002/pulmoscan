@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About PulmoScan | AI-Powered Lung Health</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Reuse your existing styles from home.html */
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4895ef;
+            --light: #f8f9fa;
+            --dark: #212529;
+            --success: #4cc9f0;
+            --danger: #f72585;
+            --warning: #f8961e;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background-color: #f5f7fa;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            padding: 1.5rem 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+        
+        .logo {
+            font-size: 1.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo-icon {
+            margin-right: 0.5rem;
+            font-size: 2rem;
+        }
+        
+        nav ul {
+            display: flex;
+            list-style: none;
+        }
+        
+        nav li {
+            margin-left: 2rem;
+        }
+        
+        nav a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+        }
+        
+        nav a:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(67, 97, 238, 0.2);
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn:hover {
+            background-color: var(--secondary);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(67, 97, 238, 0.3);
+        }
+        
+        /* About Page Specific Styles */
+        .about-hero {
+            text-align: center;
+            padding: 4rem 0;
+            margin-bottom: 3rem;
+        }
+        
+        .about-hero h1 {
+            font-size: 3rem;
+            color: var(--secondary);
+            margin-bottom: 1.5rem;
+        }
+        
+        .about-hero p {
+            font-size: 1.2rem;
+            max-width: 800px;
+            margin: 0 auto;
+            color: var(--dark);
+        }
+        
+        .section {
+            margin: 4rem 0;
+        }
+        
+        .section-title {
+            font-size: 2.2rem;
+            color: var(--secondary);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        .project-description {
+            background-color: white;
+            border-radius: 10px;
+            padding: 3rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            margin-bottom: 4rem;
+        }
+        
+        .project-description p {
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+        
+        .team {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        
+        .team-member {
+            background-color: white;
+            border-radius: 10px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .team-member:hover {
+            transform: translateY(-10px);
+        }
+        
+        .member-photo {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 0 auto 1.5rem;
+            border: 5px solid var(--accent);
+        }
+        
+        .member-name {
+            font-size: 1.4rem;
+            color: var(--secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .member-role {
+            color: var(--primary);
+            font-weight: 500;
+            margin-bottom: 1rem;
+        }
+        
+        .member-bio {
+            font-size: 0.95rem;
+            color: #555;
+        }
+        
+        .cta-section {
+            text-align: center;
+            padding: 4rem 0;
+            background: linear-gradient(135deg, rgba(67, 97, 238, 0.05), rgba(63, 55, 201, 0.05));
+            border-radius: 10px;
+            margin: 4rem 0;
+        }
+        
+        footer {
+            background-color: var(--dark);
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+            margin-top: 4rem;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        
+        .footer-links a {
+            color: white;
+            margin: 0 1rem;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <span class="logo-icon">🫁</span>
+                <span>PulmoScan</span>
+            </div>
+            <nav>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/upload">Analyze</a></li>
+                    <li><a href="/about">About</a></li>
+                    <li><a href="#">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    
+    <div class="container">
+        <section class="about-hero">
+            <h1>Revolutionizing Lung Health Through AI</h1>
+            <p>PulmoScan combines cutting-edge artificial intelligence with medical expertise to provide faster, more accurate lung CT scan analysis.</p>
+        </section>
+        
+        <section class="section">
+            <div class="project-description">
+                <h2 class="section-title">Our Project</h2>
+                <p>PulmoScan was born from a shared vision to improve early detection of lung conditions. Our platform uses deep learning algorithms trained on thousands of CT scans to identify patterns and anomalies with remarkable accuracy.</p>
+                
+                <p>What sets us apart is our focus on creating an intuitive interface that makes advanced medical AI accessible to both healthcare professionals and patients. Our technology doesn't replace doctors - it empowers them with additional insights to make better-informed decisions.</p>
+                
+                <p>The system is continuously learning and improving, with each scan analyzed contributing to better future diagnoses. We're committed to maintaining the highest standards of data privacy and security while delivering potentially life-saving insights.</p>
+            </div>
+            
+            <h2 class="section-title">Meet Our Team</h2>
+            <div class="team">
+                <!-- Team Member 1 -->
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='team-photos/amor.jpg') }}" alt="Mohamed Amor" class="member-photo">
+                    <h3 class="member-name">Mohamed Amor</h3>
+                    <p class="member-role">Project Manager</p>
+                </div>
+                
+                <!-- Team Member 2 -->
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='team-photos/ilef.jpeg') }}" alt="Ilef Hcine" class="member-photo">
+                    <h3 class="member-name">Ilef Hcine</h3>
+                    <p class="member-role">Team Lead</p>
+                </div>
+                
+                <!-- Team Member 3 -->
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='team-photos/mehdi.jpg') }}" alt="mehdi abid" class="member-photo">
+                    <h3 class="member-name">Mehdi Abid</h3>
+                    <p class="member-role">Solution Architect</p>
+                </div>
+                
+                <!-- Team Member 4 -->
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='team-photos/aziz.jpg') }}" alt="aziz belkahla" class="member-photo">
+                    <h3 class="member-name">Mohamed Aziz Belkahla</h3>
+                    <p class="member-role">Data Scientist</p>
+                </div>
+                
+                <!-- Team Member 5 -->
+                <div class="team-member">
+                    <img src="{{ url_for('static', filename='team-photos/louey.jpg') }}" alt="louay" class="member-photo">
+                    <h3 class="member-name">Ahmed Louay Araour</h3>
+                    <p class="member-role">Data Scientist</p>
+                </div>
+            </div>
+        </section>
+        
+    </div>
+    
+    <footer>
+        <div class="container">
+            <div class="footer-links">
+                <a href="#">Privacy Policy</a>
+                <a href="#">Terms of Service</a>
+                <a href="#">Contact Us</a>
+                <a href="#">Research</a>
+            </div>
+            <p>&copy; 2025 PulmoScan AI. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
