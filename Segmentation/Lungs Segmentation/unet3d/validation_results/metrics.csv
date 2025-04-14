@@ -1,0 +1,5 @@
+Metric,Value,StdDev
+dice,0.982221,0.007639
+iou,0.965174,0.014727
+sensitivity,0.974990,0.012591
+specificity,0.998619,0.000358
