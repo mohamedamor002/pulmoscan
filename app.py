@@ -22,15 +22,19 @@ def allowed_file(filename):
 
 @app.route('/')
 def home():
-    return render_template('home.html')  # New homepage
+    return render_template('home.html')
 
 @app.route('/upload')
 def upload_page():
-    return render_template('index.html')  # Your existing upload page
+    return render_template('index.html')
     
 @app.route('/about')
 def about():
     return render_template('about.html')
+
+@app.route('/static/js/<path:filename>')
+def serve_static_js(filename):
+    return send_from_directory('static/js', filename)
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
@@ -45,31 +49,46 @@ def analyze():
         return jsonify({'error': True, 'message': "Invalid file type (only .dcm allowed)"}), 400
     
     try:
+        # Save the file temporarily
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(temp_path)
         
-        # Process DICOM
-        dicom_image = sitk.ReadImage(filepath)
-        array = sitk.GetArrayFromImage(dicom_image)
+        # Read DICOM file
+        reader = sitk.ImageFileReader()
+        reader.SetFileName(temp_path)
+        reader.LoadPrivateTagsOn()
+        reader.ReadImageInformation()
         
-        # Mock analysis results (replace with actual model later)
+        # Get image data
+        image = reader.Execute()
+        
+        # Basic analysis (replace with your actual analysis)
+        array = sitk.GetArrayFromImage(image)
+        
+        # Generate report
         analysis_report = {
             "findings": "No significant abnormalities detected",
             "confidence": "92%",
             "recommendation": "Routine follow-up recommended",
-            "image_quality": "Excellent"
+            "image_quality": "Excellent",
+            "dimensions": array.shape,
+            "spacing": reader.GetSpacing(),
+            "origin": reader.GetOrigin()
         }
+        
+        # Clean up temporary file
+        try:
+            os.remove(temp_path)
+        except:
+            pass
         
         return jsonify({
             'error': False,
             'message': "Analysis complete",
-            'report': analysis_report,
-            'image_info': {
-                'shape': array.shape,
-                'filepath': f"/static/uploads/{filename}"
-            }
+            'report': analysis_report
         })
+        
     except Exception as e:
         return jsonify({
             'error': True,
