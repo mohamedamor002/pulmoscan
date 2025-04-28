@@ -1,0 +1,76 @@
+2025-04-28 13:11:07,758 - __main__ - INFO - Training parameters: Namespace(data_dir='data/Luna16', annotations='src/Nodules segmentation/processed_annotations.csv', output_dir='src/Nodules segmentation/models', log_dir='src/Nodules segmentation/logs', batch_size=4, epochs=100, lr=0.0001, val_split=0.2, patch_size=[64, 64, 64], limit_samples=0, dice_weight=0.9, use_attention=True)
+2025-04-28 13:11:07,769 - __main__ - INFO - Using device: cuda
+2025-04-28 13:11:07,784 - __main__ - INFO - Loaded 1186 valid nodule annotations
+2025-04-28 13:11:07,786 - __main__ - INFO - Nodule volume statistics - Mean: 694.31 mm³, Median: 139.43 mm³
+2025-04-28 13:11:07,796 - __main__ - INFO - Size distribution: {'small': 396, 'large': 396, 'medium': 394}
+2025-04-28 13:11:07,802 - __main__ - INFO - Dataset split: 949 training samples, 237 validation samples
+2025-04-28 13:11:09,792 - __main__ - INFO - Epoch 1/100
+2025-04-28 13:17:03,877 - __main__ - INFO - Train Loss: 0.5243, Train Dice: 0.5071, Val Loss: 0.3695, Val Dice: 0.6690
+2025-04-28 13:17:10,657 - __main__ - INFO - Saved best model (Dice: 0.6690) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 13:17:10,658 - __main__ - INFO - Epoch 2/100
+2025-04-28 13:22:52,398 - __main__ - INFO - Train Loss: 0.3632, Train Dice: 0.6728, Val Loss: 0.3783, Val Dice: 0.6486
+2025-04-28 13:22:52,398 - __main__ - INFO - Epoch 3/100
+2025-04-28 13:28:24,391 - __main__ - INFO - Train Loss: 0.3357, Train Dice: 0.7013, Val Loss: 0.3322, Val Dice: 0.7051
+2025-04-28 13:28:30,896 - __main__ - INFO - Saved best model (Dice: 0.7051) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 13:28:30,896 - __main__ - INFO - Epoch 4/100
+2025-04-28 13:33:55,319 - __main__ - INFO - Train Loss: 0.3248, Train Dice: 0.7130, Val Loss: 0.3110, Val Dice: 0.7302
+2025-04-28 13:34:01,701 - __main__ - INFO - Saved best model (Dice: 0.7302) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 13:34:01,701 - __main__ - INFO - Epoch 5/100
+2025-04-28 13:39:23,544 - __main__ - INFO - Train Loss: 0.3153, Train Dice: 0.7231, Val Loss: 0.3048, Val Dice: 0.7336
+2025-04-28 13:39:29,971 - __main__ - INFO - Saved best model (Dice: 0.7336) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 13:39:29,971 - __main__ - INFO - Epoch 6/100
+2025-04-28 13:44:58,358 - __main__ - INFO - Train Loss: 0.3049, Train Dice: 0.7339, Val Loss: 0.3088, Val Dice: 0.7301
+2025-04-28 13:44:58,358 - __main__ - INFO - Epoch 7/100
+2025-04-28 13:50:22,610 - __main__ - INFO - Train Loss: 0.3064, Train Dice: 0.7320, Val Loss: 0.2934, Val Dice: 0.7439
+2025-04-28 13:50:29,024 - __main__ - INFO - Saved best model (Dice: 0.7439) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 13:50:29,025 - __main__ - INFO - Epoch 8/100
+2025-04-28 13:55:54,414 - __main__ - INFO - Train Loss: 0.2945, Train Dice: 0.7446, Val Loss: 0.2792, Val Dice: 0.7625
+2025-04-28 13:56:00,847 - __main__ - INFO - Saved best model (Dice: 0.7625) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 13:56:00,847 - __main__ - INFO - Epoch 9/100
+2025-04-28 14:01:21,058 - __main__ - INFO - Train Loss: 0.2965, Train Dice: 0.7425, Val Loss: 0.2848, Val Dice: 0.7533
+2025-04-28 14:01:21,058 - __main__ - INFO - Epoch 10/100
+2025-04-28 14:06:37,337 - __main__ - INFO - Train Loss: 0.2833, Train Dice: 0.7564, Val Loss: 0.2796, Val Dice: 0.7608
+2025-04-28 14:06:43,745 - __main__ - INFO - Saved checkpoint at epoch 10
+2025-04-28 14:06:43,745 - __main__ - INFO - Epoch 11/100
+2025-04-28 14:12:09,084 - __main__ - INFO - Train Loss: 0.2863, Train Dice: 0.7536, Val Loss: 0.2874, Val Dice: 0.7512
+2025-04-28 14:12:09,084 - __main__ - INFO - Epoch 12/100
+2025-04-28 14:17:30,775 - __main__ - INFO - Train Loss: 0.2829, Train Dice: 0.7568, Val Loss: 0.2829, Val Dice: 0.7558
+2025-04-28 14:17:30,775 - __main__ - INFO - Epoch 13/100
+2025-04-28 14:22:54,210 - __main__ - INFO - Train Loss: 0.2756, Train Dice: 0.7649, Val Loss: 0.2700, Val Dice: 0.7717
+2025-04-28 14:23:00,779 - __main__ - INFO - Saved best model (Dice: 0.7717) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 14:23:00,779 - __main__ - INFO - Epoch 14/100
+2025-04-28 14:28:25,712 - __main__ - INFO - Train Loss: 0.2758, Train Dice: 0.7644, Val Loss: 0.2593, Val Dice: 0.7820
+2025-04-28 14:28:32,112 - __main__ - INFO - Saved best model (Dice: 0.7820) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 14:28:32,112 - __main__ - INFO - Epoch 15/100
+2025-04-28 14:33:56,615 - __main__ - INFO - Train Loss: 0.2783, Train Dice: 0.7618, Val Loss: 0.2725, Val Dice: 0.7683
+2025-04-28 14:33:56,615 - __main__ - INFO - Epoch 16/100
+2025-04-28 14:39:20,995 - __main__ - INFO - Train Loss: 0.2783, Train Dice: 0.7619, Val Loss: 0.2706, Val Dice: 0.7680
+2025-04-28 14:39:20,996 - __main__ - INFO - Epoch 17/100
+2025-04-28 14:44:45,308 - __main__ - INFO - Train Loss: 0.2639, Train Dice: 0.7768, Val Loss: 0.2779, Val Dice: 0.7618
+2025-04-28 14:44:45,308 - __main__ - INFO - Epoch 18/100
+2025-04-28 14:50:12,844 - __main__ - INFO - Train Loss: 0.2624, Train Dice: 0.7787, Val Loss: 0.2691, Val Dice: 0.7736
+2025-04-28 14:50:12,845 - __main__ - INFO - Epoch 19/100
+2025-04-28 14:55:32,501 - __main__ - INFO - Train Loss: 0.2559, Train Dice: 0.7856, Val Loss: 0.2656, Val Dice: 0.7782
+2025-04-28 14:55:32,502 - __main__ - INFO - Epoch 20/100
+2025-04-28 15:01:01,238 - __main__ - INFO - Train Loss: 0.2597, Train Dice: 0.7812, Val Loss: 0.2645, Val Dice: 0.7739
+2025-04-28 15:01:07,634 - __main__ - INFO - Saved checkpoint at epoch 20
+2025-04-28 15:01:07,634 - __main__ - INFO - Epoch 21/100
+2025-04-28 15:06:28,330 - __main__ - INFO - Train Loss: 0.2479, Train Dice: 0.7939, Val Loss: 0.2533, Val Dice: 0.7904
+2025-04-28 15:06:34,842 - __main__ - INFO - Saved best model (Dice: 0.7904) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 15:06:34,842 - __main__ - INFO - Epoch 22/100
+2025-04-28 15:12:04,969 - __main__ - INFO - Train Loss: 0.2546, Train Dice: 0.7867, Val Loss: 0.2505, Val Dice: 0.7889
+2025-04-28 15:12:04,970 - __main__ - INFO - Epoch 23/100
+2025-04-28 15:17:26,077 - __main__ - INFO - Train Loss: 0.2475, Train Dice: 0.7943, Val Loss: 0.2514, Val Dice: 0.7886
+2025-04-28 15:17:26,077 - __main__ - INFO - Epoch 24/100
+2025-04-28 15:22:48,380 - __main__ - INFO - Train Loss: 0.2463, Train Dice: 0.7956, Val Loss: 0.2402, Val Dice: 0.7999
+2025-04-28 15:22:54,807 - __main__ - INFO - Saved best model (Dice: 0.7999) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 15:22:54,807 - __main__ - INFO - Epoch 25/100
+2025-04-28 15:28:16,372 - __main__ - INFO - Train Loss: 0.2413, Train Dice: 0.8010, Val Loss: 0.2368, Val Dice: 0.8053
+2025-04-28 15:28:22,751 - __main__ - INFO - Saved best model (Dice: 0.8053) to src\Nodules segmentation\models\best_model_dice_20250428_131107.pt
+2025-04-28 15:28:22,752 - __main__ - INFO - Epoch 26/100
+2025-04-28 15:33:45,443 - __main__ - INFO - Train Loss: 0.2367, Train Dice: 0.8058, Val Loss: 0.2558, Val Dice: 0.7815
+2025-04-28 15:33:45,443 - __main__ - INFO - Epoch 27/100
+2025-04-28 15:39:12,563 - __main__ - INFO - Train Loss: 0.2348, Train Dice: 0.8076, Val Loss: 0.2375, Val Dice: 0.8037
+2025-04-28 15:39:12,563 - __main__ - INFO - Epoch 28/100
+2025-04-28 15:44:55,262 - __main__ - INFO - Train Loss: 0.2407, Train Dice: 0.8012, Val Loss: 0.2409, Val Dice: 0.8016
+2025-04-28 15:44:55,262 - __main__ - INFO - Epoch 29/100

@@ -1,0 +1,5 @@
+2025-04-12 20:41:31,350 - __main__ - INFO - Training parameters: Namespace(data_dir='data/Luna16', annotations='src/Nodules segmentation/processed_annotations.csv', output_dir='src/Nodules segmentation/models', log_dir='src/Nodules segmentation/logs', batch_size=2, epochs=10, lr=0.001, val_split=0.2, patch_size=[64, 64, 64])
+2025-04-12 20:41:31,361 - __main__ - INFO - Using device: cuda
+2025-04-12 20:41:31,368 - __main__ - INFO - Loaded 1186 valid nodule annotations
+2025-04-12 20:41:31,369 - __main__ - INFO - Dataset split: 949 training samples, 237 validation samples
+2025-04-12 20:41:32,369 - __main__ - INFO - Epoch 1/10
