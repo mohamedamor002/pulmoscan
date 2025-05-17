@@ -1,0 +1,15 @@
+flask==2.3.3
+flask-cors==4.0.0
+flask-jwt-extended==4.5.3
+Werkzeug==2.3.7
+numpy==1.26.2
+torch==2.3.0
+torchvision==0.18.0
+SimpleITK==2.5.0
+matplotlib
+tqdm==4.66.1
+scipy==1.11.2 --only-binary=scipy
+Pillow==10.0.0
+gunicorn==21.2.0 
+scikit-image
+tensorflow
