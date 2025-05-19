@@ -11,13 +11,27 @@ export const useAuth = () => useContext(AuthContext);
 export const ROLES = {
   SUPERADMIN: 'superadmin',
   ADMIN: 'admin',
-  DOCTOR: 'doctor'
+  DOCTOR: 'doctor',
+  RADIOLOGIST: 'radiologist'  // Adding radiologist role
 };
 
 // Role permissions check helpers
 export const canManageAdmins = (role) => role === ROLES.SUPERADMIN;
 export const canManageDoctors = (role) => [ROLES.SUPERADMIN, ROLES.ADMIN].includes(role);
 export const canAccessAdminArea = (role) => [ROLES.SUPERADMIN, ROLES.ADMIN].includes(role);
+export const canManageRadiologists = (role) => [ROLES.SUPERADMIN, ROLES.ADMIN].includes(role);
+
+// Role hierarchy check helpers
+export const canManageRole = (currentRole, targetRole) => {
+  switch (currentRole) {
+    case ROLES.SUPERADMIN:
+      return true; // Superadmin can manage all roles
+    case ROLES.ADMIN:
+      return [ROLES.DOCTOR, ROLES.RADIOLOGIST].includes(targetRole); // Admin can only manage doctors and radiologists
+    default:
+      return false; // Other roles can't manage any roles
+  }
+};
 
 // Auth provider component
 export const AuthProvider = ({ children }) => {
@@ -142,7 +156,8 @@ export const AuthProvider = ({ children }) => {
     hasRole,
     canManageAdmins: user ? canManageAdmins(user.role) : false,
     canManageDoctors: user ? canManageDoctors(user.role) : false,
-    canAccessAdminArea: user ? canAccessAdminArea(user.role) : false
+    canAccessAdminArea: user ? canAccessAdminArea(user.role) : false,
+    canManageRadiologists: user ? canManageRadiologists(user.role) : false
   };
 
   return (

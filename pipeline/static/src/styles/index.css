@@ -12,6 +12,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: #f9fafb;
+  overflow-x: hidden; /* Prevent horizontal scrollbar from animations */
 }
 
 code {
@@ -51,6 +52,40 @@ code {
   @apply p-6;
 }
 
+/* Medical background animations */
+.dark-mode-transition {
+  transition: background-color 0.3s ease-in-out;
+}
+
+/* Improve canvas performance */
+canvas {
+  image-rendering: optimizeSpeed;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: optimize-contrast;
+  -ms-interpolation-mode: nearest-neighbor;
+}
+
+/* Medical icon hover effect */
+.medical-icon {
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+
+.medical-icon:hover {
+  transform: scale(1.15);
+}
+
+/* Z-index adjustments for overlapping elements */
+.medical-background {
+  z-index: -10;
+}
+
+/* Ensure content remains above background */
+.content-layer {
+  z-index: 10;
+  position: relative;
+}
+
 /* Custom animation for loading */
 .loading-pulse {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -63,4 +98,15 @@ code {
   50% {
     opacity: 0.5;
   }
+}
+
+/* Additional animations for medical visualizations */
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes heart-beat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
 } 

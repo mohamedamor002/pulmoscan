@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CT Scan Visualization Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .controls {
+            margin: 20px 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        
+        .visualization {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+        
+        button {
+            padding: 8px 12px;
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        input, select {
+            padding: 8px;
+            margin-right: 10px;
+        }
+        
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>CT Scan Visualization Test</h1>
+    
+    <div class="controls">
+        <h3>Authentication</h3>
+        <div>
+            <input type="text" id="token" placeholder="JWT Token" style="width: 400px;">
+        </div>
+        <div style="margin-top: 10px;">
+            <button onclick="loginAsDoctor()">Login as Doctor</button>
+            <button onclick="loginAsAdmin()">Login as Admin</button>
+            <span id="login-status"></span>
+        </div>
+
+        <h3>Slice Controls</h3>
+        <div>
+            <input type="text" id="case-name" placeholder="Case Name" value="">
+            <select id="axis">
+                <option value="axial">Axial</option>
+                <option value="coronal">Coronal</option>
+                <option value="sagittal">Sagittal</option>
+            </select>
+            <input type="number" id="slice-index" placeholder="Slice Index" value="60" min="0" max="200">
+            <button onclick="loadSlice()">Load Slice</button>
+        </div>
+    </div>
+    
+    <div class="visualization">
+        <h3>Visualization</h3>
+        <div id="status"></div>
+        <div id="image-container">
+            <img id="slice-image" src="" alt="No slice loaded" style="display: none;">
+        </div>
+    </div>
+    
+    <script>
+        // Store token in local variable
+        let currentToken = '';
+        
+        // Function to login as doctor
+        async function loginAsDoctor() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'doctor',
+                        password: 'doctor123'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.access_token) {
+                    currentToken = data.access_token;
+                    document.getElementById('token').value = currentToken;
+                    document.getElementById('login-status').innerHTML = '<span class="success">Logged in as doctor</span>';
+                    
+                    // Try to get user's results to suggest a case name
+                    fetchUserResults();
+                } else {
+                    document.getElementById('login-status').innerHTML = '<span class="error">Login failed: ' + (data.msg || 'Unknown error') + '</span>';
+                }
+            } catch (error) {
+                document.getElementById('login-status').innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+            }
+        }
+        
+        // Function to login as admin
+        async function loginAsAdmin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.access_token) {
+                    currentToken = data.access_token;
+                    document.getElementById('token').value = currentToken;
+                    document.getElementById('login-status').innerHTML = '<span class="success">Logged in as admin</span>';
+                    
+                    // Try to get all results to suggest a case name
+                    fetchResults();
+                } else {
+                    document.getElementById('login-status').innerHTML = '<span class="error">Login failed: ' + (data.msg || 'Unknown error') + '</span>';
+                }
+            } catch (error) {
+                document.getElementById('login-status').innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+            }
+        }
+        
+        // Function to fetch results for the current user
+        async function fetchUserResults() {
+            try {
+                const response = await fetch('/api/results/user', {
+                    headers: {
+                        'Authorization': 'Bearer ' + currentToken
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        // Use the first result's case name
+                        document.getElementById('case-name').value = data[0].case_name;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching user results:', error);
+            }
+        }
+        
+        // Function to fetch all results (admin only)
+        async function fetchResults() {
+            try {
+                const response = await fetch('/api/results', {
+                    headers: {
+                        'Authorization': 'Bearer ' + currentToken
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.length > 0) {
+                        // Use the first result's case name
+                        document.getElementById('case-name').value = data[0].case_name;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching results:', error);
+            }
+        }
+        
+        // Function to load a slice
+        async function loadSlice() {
+            const caseName = document.getElementById('case-name').value;
+            const axis = document.getElementById('axis').value;
+            const sliceIndex = document.getElementById('slice-index').value;
+            
+            // Update status
+            document.getElementById('status').innerHTML = '<span>Loading slice...</span>';
+            document.getElementById('slice-image').style.display = 'none';
+            
+            if (!caseName) {
+                document.getElementById('status').innerHTML = '<span class="error">Please enter a case name</span>';
+                return;
+            }
+            
+            try {
+                // Get the token from the input field (might have been updated)
+                currentToken = document.getElementById('token').value;
+                
+                // Build the URL
+                let url = `/api/results/${caseName}/slices?axis=${axis}&index=${sliceIndex}`;
+                
+                // Add token as query parameter if available
+                if (currentToken) {
+                    url += `&token=${currentToken}`;
+                }
+                
+                // Fetch the slice
+                const response = await fetch(url);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.slice_data) {
+                        // Display the image
+                        document.getElementById('slice-image').src = 'data:image/png;base64,' + data.slice_data;
+                        document.getElementById('slice-image').style.display = 'block';
+                        document.getElementById('status').innerHTML = '<span class="success">Slice loaded successfully</span>';
+                        
+                        // Update max slice index
+                        document.getElementById('slice-index').max = data.max_index || 200;
+                    } else if (data.error) {
+                        document.getElementById('status').innerHTML = '<span class="error">Error: ' + data.error + '</span>';
+                    } else {
+                        document.getElementById('status').innerHTML = '<span class="error">No slice data returned</span>';
+                    }
+                } else {
+                    const errorData = await response.json();
+                    document.getElementById('status').innerHTML = '<span class="error">Error: ' + (errorData.error || response.statusText) + '</span>';
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = '<span class="error">Error: ' + error.message + '</span>';
+            }
+        }
+    </script>
+</body>
+</html> 

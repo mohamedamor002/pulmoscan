@@ -5,6 +5,30 @@ import { MoonIcon, SunIcon, PencilIcon, CheckIcon, XMarkIcon, ExclamationCircleI
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+// Create a context for background settings
+export const BackgroundContext = React.createContext({
+  backgroundVariant: 'default',
+  setBackgroundVariant: () => {},
+});
+
+// Add this somewhere at the top level of your app (e.g., in App.js or a new context file)
+export const BackgroundProvider = ({ children }) => {
+  const [backgroundVariant, setBackgroundVariant] = useState(
+    localStorage.getItem('backgroundVariant') || 'default'
+  );
+  
+  // Save to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('backgroundVariant', backgroundVariant);
+  }, [backgroundVariant]);
+  
+  return (
+    <BackgroundContext.Provider value={{ backgroundVariant, setBackgroundVariant }}>
+      {children}
+    </BackgroundContext.Provider>
+  );
+};
+
 const SettingsPage = () => {
   const { user, login, logout, updateUserContext } = useAuth();
   const { darkMode, toggleDarkMode } = useTheme();
@@ -17,6 +41,10 @@ const SettingsPage = () => {
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [expandedFaqIndex, setExpandedFaqIndex] = useState(null);
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('general');
+  const [backgroundVariant, setBackgroundVariant] = useState(
+    localStorage.getItem('backgroundVariant') || 'default'
+  );
   
   // Profile state
   const [profile, setProfile] = useState({
@@ -286,6 +314,13 @@ const SettingsPage = () => {
     ];
     
     return colors[Math.min(passwordStrength, 4)];
+  };
+
+  // Function to handle background variant change
+  const handleBackgroundChange = (variant) => {
+    setBackgroundVariant(variant);
+    localStorage.setItem('backgroundVariant', variant);
+    // You might want to dispatch an event or use context to update this globally
   };
 
   return (

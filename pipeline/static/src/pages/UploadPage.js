@@ -13,7 +13,7 @@ const UploadPage = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [showRawUpload, setShowRawUpload] = useState(false);
   const [previewResult, setPreviewResult] = useState(null);
@@ -36,6 +36,9 @@ const UploadPage = () => {
   
   // Track current location to detect changes
   const [prevLocation, setPrevLocation] = useState(null);
+  
+  // Add processingMessage to state variables
+  const [processingMessage, setProcessingMessage] = useState(null);
   
   // Handle location changes to detect navigation attempts
   useEffect(() => {
@@ -229,7 +232,7 @@ const UploadPage = () => {
     }
 
     setIsUploading(true);
-    setProgress(0);
+    setUploadProgress(0);
     setProcessingProgress(0);
     setError(null);
 
@@ -263,7 +266,7 @@ const UploadPage = () => {
         },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setProgress(percentCompleted);
+          setUploadProgress(percentCompleted);
           
           // When upload is complete (100%), start the processing progress simulation
           if (percentCompleted === 100) {
@@ -346,125 +349,113 @@ const UploadPage = () => {
 
   const handleDicomVolumeUpload = async () => {
     if (dicomFiles.length === 0) {
-      setError('Please select DICOM files to upload');
+      setError('Please select DICOM files for upload');
       return;
     }
-
-    // Validate file sizes (total size limit check)
-    const maxTotalSizeInBytes = 500 * 1024 * 1024; // 500MB
-    const totalSize = dicomFiles.reduce((sum, file) => sum + file.size, 0);
-    
-    if (totalSize > maxTotalSizeInBytes) {
-      setError(`Total file size exceeds the maximum limit of 500MB. Your files total ${(totalSize / (1024 * 1024)).toFixed(2)}MB.`);
-      return;
-    }
-
-    setIsUploading(true);
-    setProgress(0);
-    setProcessingProgress(0);
-    setError(null);
-
-    const formData = new FormData();
-    
-    // Add all DICOM files to the form data
-    dicomFiles.forEach(file => {
-      formData.append('files[]', file);
-    });
-    
-    // Add processing options
-    formData.append('confidence', confidence.toString());
-    formData.append('lungs_only', 'false');
-    formData.append('no_segmentation', 'true');
 
     try {
-      // Upload phase
+      setIsProcessing(true);
+      setUploadProgress(0);
+      setError(null);
+      
+      // Create form data for the upload
+      const formData = new FormData();
+      dicomFiles.forEach(file => {
+        formData.append('files[]', file);
+      });
+      
+      // Add processing options
+      formData.append('confidence', confidence);
+      formData.append('lungs_only', 'false');
+      
+      // Upload the files
       const response = await axios.post('/api/upload/dicom-volume', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': 'multipart/form-data'
         },
         onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          setProgress(percentCompleted);
-          
-          // When upload is complete (100%), start the processing progress simulation
-          if (percentCompleted === 100) {
-            setIsUploading(false);
-            setIsProcessing(true);
-            
-            // Simulate processing progress
-            // This is just a visual indicator since we don't have real-time backend progress updates
-            let currentProgress = 0;
-            const processingInterval = setInterval(() => {
-              // Increment progress in a non-linear way to simulate real processing
-              // Start slower, then speed up, then slow down again at the end
-              if (currentProgress < 30) {
-                currentProgress += 1;
-              } else if (currentProgress < 70) {
-                currentProgress += 2;
-              } else if (currentProgress < 90) {
-                currentProgress += 0.5;
-              } else if (currentProgress < 98) {
-                currentProgress += 0.2;
-              }
-              
-              if (currentProgress >= 99) {
-                clearInterval(processingInterval);
-              }
-              
-              setProcessingProgress(currentProgress);
-            }, 500);
-          }
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(progress);
         }
       });
       
-      console.log("DICOM volume upload response:", response.data);
+      // Reset upload progress after completed
+      setUploadProgress(100);
       
       if (response.data && response.data.job_id) {
         // Start polling for the processing status
         const jobId = response.data.job_id;
+        let pollCount = 0;
+        const maxPolls = 120; // Poll for up to 2 minutes (120 x 1s)
+        const pollDelay = 1000; // 1 second between polls
+        let foundResult = false;
+        
+        setProcessingMessage("Processing DICOM volume. This may take a few minutes...");
+        
         const pollInterval = setInterval(async () => {
           try {
+            pollCount++;
             const statusResponse = await axios.get(`/api/results/preview/${jobId}`);
-            console.log("Poll status response:", statusResponse.data);
+            console.log(`Poll status check ${pollCount}:`, statusResponse.data);
             
             // Check if we have a status field
             if (statusResponse.data.status === 'completed') {
               clearInterval(pollInterval);
+              foundResult = true;
               setIsProcessing(false);
               setPreviewResult(statusResponse.data);
               setShowPreview(true);
+              setProcessingMessage(null);
             } else if (statusResponse.data.status === 'error') {
               clearInterval(pollInterval);
+              foundResult = true;
               setIsProcessing(false);
-              setError(`Error processing DICOM volume: ${statusResponse.data.error || 'Unknown error'}`);
-            } else {
-              // Still processing
-              console.log("Processing still in progress...");
-            }
-          } catch (err) {
-            console.error("Error polling for job status:", err);
-            // Count consecutive errors for potential timeout
-            if (!window.pollErrorCount) window.pollErrorCount = 0;
-            window.pollErrorCount++;
-            
-            // If we've had too many consecutive errors, stop polling
-            if (window.pollErrorCount > 30) { // After about 2.5 minutes of errors
+              setError(`Processing error: ${statusResponse.data.error || 'Unknown error'}`);
+              setProcessingMessage(null);
+            } else if (pollCount >= maxPolls) {
+              // If we've polled too many times, still show the result page but with a notice
               clearInterval(pollInterval);
               setIsProcessing(false);
-              setError("Timed out waiting for processing to complete. The process may still be running in the background.");
+              setProcessingMessage("Processing is continuing in the background. You may need to check Results page later.");
+              try {
+                // Try one more time to get the result
+                const finalCheck = await axios.get(`/api/results/preview/${jobId}`);
+                if (finalCheck.data) {
+                  setPreviewResult(finalCheck.data);
+                  setShowPreview(true);
+                  foundResult = true;
+                }
+              } catch (e) {
+                console.error("Final check failed:", e);
+              }
+            } else {
+              // Still processing, update message with time elapsed
+              const minutesElapsed = Math.floor(pollCount * pollDelay / 60000);
+              const secondsElapsed = Math.floor((pollCount * pollDelay / 1000) % 60);
+              setProcessingMessage(`Processing DICOM volume... (${minutesElapsed}m ${secondsElapsed}s elapsed)`);
+            }
+          } catch (error) {
+            console.log(`Poll error (attempt ${pollCount}):`, error);
+            
+            // Don't give up on first error, try a few more times
+            if (pollCount >= maxPolls) {
+              clearInterval(pollInterval);
+              if (!foundResult) {
+                setIsProcessing(false);
+                setError('Failed to retrieve processing result. Please check the Results page later.');
+                setProcessingMessage("Processing is continuing in the background.");
+              }
             }
           }
-        }, 5000);
+        }, pollDelay);
       } else {
         setIsProcessing(false);
-        setError("Invalid response from server. Processing may have failed.");
+        setError('Failed to start processing. Please try again.');
       }
-      
-    } catch (err) {
-      console.error("Error uploading DICOM volume:", err);
-      setIsUploading(false);
+    } catch (error) {
       setIsProcessing(false);
-      setError(err.response?.data?.error || `Error uploading DICOM volume: ${err.message}`);
+      console.error('Error uploading DICOM volume:', error);
+      setError(error.response?.data?.error || 'Failed to upload DICOM volume. Please try again.');
     }
   };
 
@@ -807,7 +798,68 @@ const UploadPage = () => {
                 </div>
               )}
               
-              {/* DICOM Volume upload button */}
+              {/* DICOM Volume confidence settings */}
+              {uploadMode === 'dicom-volume' && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confidence Threshold: {confidence}
+                  </label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="0.9"
+                    step="0.1"
+                    value={confidence}
+                    onChange={(e) => setConfidence(parseFloat(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-gray-500 px-1">
+                    <span>Less strict (0.1)</span>
+                    <span>More strict (0.9)</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Upload progress */}
+              {isUploading && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Uploading...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${uploadProgress}%` }}></div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Processing progress (only shown for DICOM volume) */}
+              {uploadMode === 'dicom-volume' && isProcessing && !processingMessage && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Processing...</span>
+                    <span>Please wait</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div className="bg-green-500 h-2.5 rounded-full animate-pulse" style={{ width: '100%' }}></div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Processing message */}
+              {isProcessing && processingMessage && (
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                  <div className="flex items-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-sm text-blue-700">{processingMessage}</span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Upload button */}
               <div className="mt-6">
                 <button 
                   onClick={handleDicomVolumeUpload}

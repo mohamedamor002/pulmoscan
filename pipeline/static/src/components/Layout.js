@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, ROLES, canAccessAdminArea } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import MedicalBackground from './MedicalBackground';
+import { BackgroundContext } from '../pages/SettingsPage';
 import {
   HomeIcon,
   CloudArrowUpIcon,
@@ -18,7 +20,8 @@ import {
   MoonIcon,
   MagnifyingGlassIcon,
   BellIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  UserIcon
 } from '@heroicons/react/24/outline';
 
 const Layout = () => {
@@ -29,6 +32,7 @@ const Layout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [scrolled, setScrolled] = useState(false);
+  const { backgroundVariant } = useContext(BackgroundContext);
 
   // Handle scroll effect for header
   useEffect(() => {
@@ -55,9 +59,22 @@ const Layout = () => {
   ];
 
   // Determine which navigation items to show based on user role
-  const navigation = canAccessAdminArea(user?.role)
-    ? [...baseNavigation, ...adminNavigation]
-    : baseNavigation;
+  const getNavigationItems = () => {
+    if (user?.role === ROLES.SUPERADMIN) {
+      return [
+        { name: 'Dashboard', href: '/', icon: HomeIcon },
+        { name: 'Users', href: '/users', icon: UserGroupIcon }
+      ];
+    }
+    
+    if (canAccessAdminArea(user?.role)) {
+      return [...baseNavigation, ...adminNavigation];
+    }
+    
+    return baseNavigation;
+  };
+
+  const navigation = getNavigationItems();
 
   const handleLogout = () => {
     logout();
@@ -81,6 +98,20 @@ const Layout = () => {
             Admin
           </span>
         );
+      case ROLES.DOCTOR:
+        return (
+          <span className={`ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${darkMode ? 'bg-green-900 text-green-100' : 'bg-green-100 text-green-800'}`}>
+            <UserIcon className="mr-1 h-3 w-3" />
+            Doctor
+          </span>
+        );
+      case ROLES.RADIOLOGIST:
+        return (
+          <span className={`ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${darkMode ? 'bg-yellow-900 text-yellow-100' : 'bg-yellow-100 text-yellow-800'}`}>
+            <UserIcon className="mr-1 h-3 w-3" />
+            Radiologist
+          </span>
+        );
       default:
         return null;
     }
@@ -99,6 +130,9 @@ const Layout = () => {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100'} flex`}>
+      {/* Add the medical background animation */}
+      <MedicalBackground />
+      
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div 
@@ -113,9 +147,7 @@ const Layout = () => {
           {/* Sidebar header with logo and close button */}
           <div className={`flex items-center justify-between h-16 px-6 ${darkMode ? 'bg-gray-900 text-white' : 'bg-indigo-600 text-white'}`}>
             <Link to="/" className="flex items-center">
-              <div className="h-8 w-8 rounded-full bg-white flex items-center justify-center text-indigo-600">
-                <BeakerIcon className="h-5 w-5" />
-              </div>
+              <img src="/images/logo/Logo (1).png" alt="PulmoScan Logo" className="h-10 w-auto" />
               <span className="ml-2 text-xl font-semibold text-white">PulmoScan</span>
             </Link>
             <button
@@ -236,9 +268,7 @@ const Layout = () => {
             <Bars3Icon className="h-5 w-5" />
           </button>
           <Link to="/" className="flex items-center">
-            <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center text-white">
-              <BeakerIcon className="h-5 w-5" />
-            </div>
+            <img src="/images/logo/Logo (1).png" alt="PulmoScan Logo" className="h-8 w-auto" />
             <span className={`ml-2 text-lg font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>PulmoScan</span>
           </Link>
           <div className="flex items-center">

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { ArrowPathIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../contexts/ThemeContext';
 
-const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }) => {
+const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false, onNoduleClick }) => {
   const [volumeInfo, setVolumeInfo] = useState(null);
   const [currentAxis, setCurrentAxis] = useState('axial');
   const [currentSlice, setCurrentSlice] = useState(0);
@@ -11,23 +11,90 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [nodulesInSlice, setNodulesInSlice] = useState([]);
+  const [selectedNoduleState, setSelectedNoduleState] = useState(selectedNoduleId);
   const imageRef = useRef(null);
   const containerRef = useRef(null);
   const { darkMode } = useTheme();
 
+  // Update local state when prop changes
+  useEffect(() => {
+    setSelectedNoduleState(selectedNoduleId);
+    
+    // If a nodule is selected from outside (e.g., from nodule table), navigate to it
+    if (selectedNoduleId && volumeInfo && volumeInfo.nodules) {
+      const nodule = volumeInfo.nodules.find(n => n.id === selectedNoduleId);
+      if (nodule) {
+        console.log(`External selection of nodule ${selectedNoduleId}, navigating to slice ${nodule.z}`);
+        
+        // Always switch to axial view for nodule navigation from table
+        setCurrentAxis('axial');
+        
+        // Set the slice to the nodule's z-coordinate (with bounds checking)
+        const zSlice = Math.min(Math.max(0, Math.round(nodule.z)), 
+                               volumeInfo.dimensions ? (volumeInfo.dimensions.depth - 1) : 100);
+        setCurrentSlice(zSlice);
+      }
+    }
+  }, [selectedNoduleId, volumeInfo]);
+
+  // Get the auth token from localStorage
+  const getAuthToken = () => {
+    return localStorage.getItem('token');
+  };
+
+  // Setup axios request with auth headers
+  const createAuthorizedRequest = () => {
+    const token = getAuthToken();
+    return {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    };
+  };
+
   // Function to go to a specific nodule slice
   const goToNoduleSlice = (noduleId) => {
-    if (!volumeInfo || !volumeInfo.nodules) return;
+    if (!volumeInfo || !volumeInfo.nodules) {
+      console.error('Cannot go to nodule slice: volumeInfo or nodules not available');
+      return;
+    }
     
-    // Find the nodule by ID
-    const nodule = volumeInfo.nodules.find(n => n.id === noduleId);
-    if (!nodule) return;
+    console.log(`InteractiveViewer.goToNoduleSlice called with ID: "${noduleId}"`);
+    console.log('Available nodules:', volumeInfo.nodules.map(n => `"${n.id}"`).join(', '));
     
-    // Set the axis to axial (z)
+    // Find the selected nodule in the list - try exact match first
+    let nodule = volumeInfo.nodules.find(n => n.id === noduleId);
+    
+    // If no exact match, try looser matching (sometimes IDs get transformed)
+    if (!nodule && typeof noduleId === 'string') {
+      // Try without spaces
+      const normalizedId = noduleId.replace(/\s+/g, '');
+      nodule = volumeInfo.nodules.find(n => 
+        (typeof n.id === 'string' && n.id.replace(/\s+/g, '') === normalizedId) ||
+        String(n.id) === noduleId
+      );
+      
+      if (nodule) {
+        console.log(`Found nodule with normalized ID matching: ${nodule.id}`);
+      }
+    }
+    
+    if (!nodule) {
+      console.error(`Nodule with ID ${noduleId} not found, available nodules:`, volumeInfo.nodules);
+      return;
+    }
+    
+    console.log(`Navigating to nodule ${noduleId} at position z=${nodule.z}, y=${nodule.y}, x=${nodule.x}`);
+    
+    // Update the selected nodule state
+    setSelectedNoduleState(noduleId);
+    
+    // Always switch to axial view for best nodule visualization
     setCurrentAxis('axial');
     
-    // Set the slice to the nodule's z-coordinate
-    setCurrentSlice(Math.round(nodule.z));
+    // Navigate to the Z slice of the nodule (axial view)
+    const zSlice = Math.min(Math.max(0, Math.round(nodule.z)), volumeInfo.dimensions.depth - 1);
+    setCurrentSlice(zSlice);
+    
+    console.log(`Set axis to axial and slice to ${zSlice}`);
   };
 
   // Navigate to selected nodule when selectedNoduleId or volumeInfo changes
@@ -42,38 +109,84 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
     const fetchVolumeInfo = async () => {
       try {
         setIsLoading(true);
-        const response = await axios.get(`/api/results/${caseId}/slices`);
-        setVolumeInfo(response.data.volume_info);
         
-        // Check if we're using placeholder data
-        const usingPlaceholder = response.data.using_placeholder || false;
-        if (usingPlaceholder) {
-          console.warn('Using placeholder data for volume');
+        // Add token to the request
+        const token = getAuthToken();
+        let url = `/api/results/${caseId}/slices`;
+        
+        // Add token as query parameter as fallback
+        if (token) {
+          url += `?token=${token}`;
         }
         
-        // Set initial slice to middle of volume
-        const initialSlice = Math.floor(response.data.volume_info.dimensions.depth / 2);
-        setCurrentSlice(initialSlice);
-
-        // If we're in a simplified view for the results page and there are nodules,
-        // try to show a slice with a nodule if possible
-        if (resultsPageView && response.data.volume_info.nodules && response.data.volume_info.nodules.length > 0) {
-          // Find the slice with the most confident nodule
-          const mainNodule = response.data.volume_info.nodules.reduce(
-            (prev, current) => (current.confidence > prev.confidence) ? current : prev,
-            response.data.volume_info.nodules[0]
-          );
-          // Ensure we're setting a valid number, not NaN
-          const noduleZ = Math.round(mainNodule.z);
-          if (!isNaN(noduleZ) && noduleZ >= 0 && noduleZ < response.data.volume_info.dimensions.depth) {
-            setCurrentSlice(noduleZ);
+        const response = await axios.get(url, createAuthorizedRequest());
+        
+        // Check if we received valid volume information
+        if (response.data.volume_info) {
+          setVolumeInfo(response.data.volume_info);
+          
+          // Check if we're using placeholder data
+          const usingPlaceholder = response.data.using_placeholder || false;
+          if (usingPlaceholder) {
+            console.warn('Using placeholder data for volume');
           }
+          
+          // Set initial slice to middle of volume
+          const initialSlice = Math.floor(response.data.volume_info.dimensions.depth / 2) || 0;
+          setCurrentSlice(initialSlice);
+          
+          // If we're in a simplified view for the results page and there are nodules,
+          // try to show a slice with a nodule if possible
+          if (response.data.volume_info.nodules && response.data.volume_info.nodules.length > 0) {
+            // Find the slice with the most confident nodule
+            const mainNodule = response.data.volume_info.nodules.reduce(
+              (prev, current) => (current.confidence > prev.confidence) ? current : prev,
+              response.data.volume_info.nodules[0]
+            );
+            
+            // If there's a selected nodule ID and it matches one of our nodules, use that one
+            if (selectedNoduleId) {
+              const selectedNodule = response.data.volume_info.nodules.find(n => n.id === selectedNoduleId);
+              if (selectedNodule) {
+                // Ensure we're setting a valid number, not NaN
+                const noduleZ = Math.round(selectedNodule.z);
+                if (!isNaN(noduleZ) && noduleZ >= 0 && noduleZ < response.data.volume_info.dimensions.depth) {
+                  setCurrentSlice(noduleZ);
+                  setSelectedNoduleState(selectedNoduleId);
+                }
+              }
+            } 
+            // Else if no selected nodule or it wasn't found, navigate to the most confident nodule
+            else {
+              // Ensure we're setting a valid number, not NaN
+              const noduleZ = Math.round(mainNodule.z);
+              if (!isNaN(noduleZ) && noduleZ >= 0 && noduleZ < response.data.volume_info.dimensions.depth) {
+                setCurrentSlice(noduleZ);
+              }
+            }
+          }
+        } else {
+          console.warn('No volume information received from server');
+          // Set default volume info to prevent errors
+          setVolumeInfo({
+            dimensions: { depth: 1, height: 512, width: 512 },
+            spacing: [1.0, 1.0, 1.0],
+            nodules: []
+          });
+          setCurrentSlice(0);
         }
         
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching volume info:', error);
         setError(error.response?.data?.message || 'Failed to load volume data');
+        // Set default volume info to prevent errors
+        setVolumeInfo({
+          dimensions: { depth: 1, height: 512, width: 512 },
+          spacing: [1.0, 1.0, 1.0],
+          nodules: []
+        });
+        setCurrentSlice(0);
         setIsLoading(false);
       }
     };
@@ -88,15 +201,54 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
       
       try {
         setIsLoading(true);
-        const response = await axios.get(`/api/results/${caseId}/slices/${currentAxis}/${currentSlice}`);
+        
+        // Add token to the request
+        const token = getAuthToken();
+        let url = `/api/results/${caseId}/slices?axis=${currentAxis}&index=${currentSlice}`;
+        
+        // Add token as query parameter as fallback
+        if (token) {
+          url += `&token=${token}`;
+        }
+        
+        const response = await axios.get(url, createAuthorizedRequest());
         
         // Check if we received a placeholder image
         const isPlaceholder = response.data.is_placeholder || false;
         
         // Get the slice data, handling whether it includes the data:image prefix or not
         let imageData = response.data.slice_data;
+        if (!imageData) {
+          console.error('No slice data received');
+          setError('No image data received from server');
+          setIsLoading(false);
+          return;
+        }
+        
         if (!imageData.startsWith('data:image')) {
           imageData = `data:image/png;base64,${imageData}`;
+        }
+        
+        // Update max dimension information if available
+        if (response.data.all_dimensions) {
+          // Don't update volumeInfo here as it causes a render loop
+          // Just store the dimensions for reference
+          const allDimensions = {
+            axial: response.data.all_dimensions.axial,
+            coronal: response.data.all_dimensions.coronal,
+            sagittal: response.data.all_dimensions.sagittal
+          };
+          
+          // Only update the current max index if needed - this won't trigger a re-render
+          // since we're not updating the volumeInfo state
+          if (allDimensions[currentAxis] && currentSlice > allDimensions[currentAxis] - 1) {
+            setCurrentSlice(allDimensions[currentAxis] - 1);
+          }
+        }
+        
+        // If max_index is provided, ensure we're not exceeding it
+        if (response.data.max_index !== undefined && currentSlice > response.data.max_index) {
+          setCurrentSlice(response.data.max_index);
         }
         
         setSliceImage({
@@ -104,10 +256,33 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
           isPlaceholder: isPlaceholder
         });
         
+        // If there's an error message, display it but still show the image
+        if (response.data.error || response.data.message) {
+          console.warn('Server returned an error or message:', response.data.error || response.data.message);
+        }
+        
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching slice:', error);
         setError(error.response?.data?.message || 'Failed to load slice');
+        
+        // Try to display error image if available
+        if (error.response?.data?.slice_data) {
+          try {
+            let imageData = error.response.data.slice_data;
+            if (!imageData.startsWith('data:image')) {
+              imageData = `data:image/png;base64,${imageData}`;
+            }
+            
+            setSliceImage({
+              data: imageData,
+              isPlaceholder: true
+            });
+          } catch (imgError) {
+            console.error('Error processing error image:', imgError);
+          }
+        }
+        
         setIsLoading(false);
       }
     };
@@ -144,10 +319,29 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
     // Skip drawing nodules on placeholder images
     if (sliceImage.isPlaceholder) return;
 
-    // Skip drawing nodules in results page view
-    if (resultsPageView) return;
+    // Check if we're using MHD format with server-rendered nodules
+    const isMhdFormat = caseId && (
+      caseId.endsWith('.mhd') || 
+      caseId.includes('1.3.6.1.4.1.14519') || // LIDC-IDRI format
+      caseId.includes('1.2.826') // DICOM UID format
+    );
 
     const drawNodules = () => {
+      // For MHD files with server-rendered nodules, we may not need to draw client-side
+      // Client-side drawing might interfere with server-rendered nodules
+      if (isMhdFormat) {
+        console.log('Using server-rendered nodules for MHD format');
+        // We'll still make the nodules clickable, but won't draw overlays
+        const img = imageRef.current;
+        if (!img.complete) {
+          img.onload = setupNoduleInteractions;
+          return;
+        }
+        setupNoduleInteractions();
+        return;
+      }
+      
+      // Normal drawing for non-MHD formats
       const img = imageRef.current;
       if (!img.complete) {
         // Wait for image to load before drawing
@@ -158,6 +352,87 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
       drawNodulesOnImage();
     };
 
+    // This function just makes nodules clickable without drawing SVG overlays
+    const setupNoduleInteractions = () => {
+      const img = imageRef.current;
+      const container = containerRef.current;
+      
+      // Create overlay div for event handling
+      const existingOverlay = container.querySelector('.nodule-overlay');
+      if (existingOverlay) {
+        container.removeChild(existingOverlay);
+      }
+      
+      // Create a minimal overlay just for handling clicks
+      const overlay = document.createElement('div');
+      overlay.className = 'nodule-overlay';
+      overlay.style.position = 'absolute';
+      overlay.style.top = '0';
+      overlay.style.left = '0';
+      overlay.style.width = '100%';
+      overlay.style.height = '100%';
+      overlay.style.pointerEvents = 'auto';
+      
+      // Add click handler for the whole image
+      overlay.addEventListener('click', (event) => {
+        // Get click coordinates relative to the image
+        const rect = img.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        
+        // Normalize to 0-1 range
+        const xNorm = x / rect.width;
+        const yNorm = y / rect.height;
+        
+        // Convert to image coordinates
+        const imgX = Math.round(xNorm * volumeInfo.dimensions.width);
+        const imgY = Math.round(yNorm * volumeInfo.dimensions.height);
+        
+        // Find closest nodule to click point
+        let closestNodule = null;
+        let minDistance = Infinity;
+        
+        nodulesInSlice.forEach(nodule => {
+          let nodeX, nodeY;
+          
+          if (currentAxis === 'axial') {
+            nodeX = nodule.x;
+            nodeY = nodule.y;
+          } else if (currentAxis === 'coronal') {
+            nodeX = nodule.x;
+            nodeY = nodule.z;
+          } else { // sagittal
+            nodeX = nodule.y;
+            nodeY = nodule.z;
+          }
+          
+          const distance = Math.sqrt(
+            Math.pow(nodeX - imgX, 2) + 
+            Math.pow(nodeY - imgY, 2)
+          );
+          
+          // Consider a nodule clicked if within 30px of its center
+          if (distance < nodule.radius * 2 && distance < minDistance) {
+            minDistance = distance;
+            closestNodule = nodule;
+          }
+        });
+        
+        if (closestNodule) {
+          setSelectedNoduleState(closestNodule.id);
+          
+          if (onNoduleClick) {
+            onNoduleClick(closestNodule.id);
+          } else {
+            goToNoduleSlice(closestNodule.id);
+          }
+        }
+      });
+      
+      container.appendChild(overlay);
+    };
+
+    // Original function for drawing nodules with SVG overlays
     const drawNodulesOnImage = () => {
       const img = imageRef.current;
       const container = containerRef.current;
@@ -176,7 +451,7 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
       overlay.style.left = '0';
       overlay.style.width = '100%';
       overlay.style.height = '100%';
-      overlay.style.pointerEvents = 'none';
+      overlay.style.pointerEvents = 'auto';
       
       // Calculate image display dimensions and position
       const imgRect = img.getBoundingClientRect();
@@ -285,7 +560,7 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
         let radiusPixels = radiusMm * pixelsPerMm;
         
         // Make circles more appropriately sized for visualization
-        radiusPixels = Math.max(5, radiusPixels * 0.5); // Minimum 5px radius for visibility
+        radiusPixels = Math.max(8, radiusPixels * 0.75); // Increase from 0.5 to 0.75 multiplier with larger minimum radius
         
         // Adjust the radius based on how far the nodule is from the current slice
         let distanceFromSlice;
@@ -298,16 +573,21 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
         }
         
         // Calculate the nodule color based on confidence
-        const color = getNoduleColor(nodule.confidence);
+        // Use a lighter red for better visibility
+        const color = '#FF5555'; // Lighter red color for all nodules
         
         // Create circle element for nodule outline
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', xPx);
         circle.setAttribute('cy', yPx);
         circle.setAttribute('r', radiusPixels);
-        circle.setAttribute('fill', 'none');
+        circle.setAttribute('fill', 'rgba(255, 150, 150, 0.15)'); // Lighter red fill with lower opacity
         circle.setAttribute('stroke', color);
-        circle.setAttribute('stroke-width', '2');
+        circle.setAttribute('stroke-width', '1.5'); // Thinner stroke
+        circle.setAttribute('data-nodule-id', nodule.id); // Add nodule ID as data attribute
+        
+        // Make nodules interactive - turn off pointer-events: none on the overlay
+        overlay.style.pointerEvents = 'auto';
         
         // Create dot element for center point
         const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -315,12 +595,84 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
         centerDot.setAttribute('cy', yPx);
         centerDot.setAttribute('r', '3');
         centerDot.setAttribute('fill', color);
+        centerDot.setAttribute('data-nodule-id', nodule.id); // Add nodule ID to center dot too
         
         // Highlight selected nodule with a thicker stroke
-        if (selectedNoduleId === nodule.id) {
-          circle.setAttribute('stroke-width', '3');
-          circle.setAttribute('stroke-dasharray', '5,3');
+        if (selectedNoduleState === nodule.id) {
+            circle.setAttribute('stroke-width', '3');  // Still thicker for selected but reduced
+            circle.setAttribute('stroke-dasharray', '5,3');
+            circle.setAttribute('fill', 'rgba(255, 150, 150, 0.35)'); // Lighter red fill for selected nodule
+            centerDot.setAttribute('r', '4'); // Slightly smaller center dot for selected nodule
         }
+        
+        // Add click event listeners to circle and centerDot
+        const handleClick = (event) => {
+            event.stopPropagation(); // Prevent click from propagating to container
+            const noduleId = event.target.getAttribute('data-nodule-id');
+            if (noduleId) {
+                // Set selected nodule state locally
+                setSelectedNoduleState(noduleId);
+                
+                // Call the parent's handler if provided
+                if (onNoduleClick) {
+                    onNoduleClick(noduleId);
+                } else {
+                    // Otherwise use our own navigation
+                    goToNoduleSlice(noduleId);
+                }
+                
+                // Redraw nodules to update selection highlighting
+                setTimeout(() => drawNodulesOnImage(), 0);
+            }
+        };
+        
+        // Add event listeners
+        circle.addEventListener('click', handleClick);
+        centerDot.addEventListener('click', handleClick);
+        
+        // Add tooltip with nodule info
+        const tooltip = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        const confidence = nodule.confidence ? (nodule.confidence * 100).toFixed(0) + '%' : 'N/A';
+        const malignancy = nodule.malignancy || 'Unknown';
+        tooltip.textContent = `Nodule ${nodule.id}\nConfidence: ${confidence}\nMalignancy: ${malignancy}`;
+        circle.appendChild(tooltip);
+        
+        // Add mouseover/mouseout effects for better interaction
+        circle.addEventListener('mouseover', () => {
+            circle.setAttribute('stroke-width', '2.5');
+            circle.setAttribute('fill', 'rgba(255, 150, 150, 0.25)');
+            centerDot.setAttribute('r', '4');
+        });
+        
+        circle.addEventListener('mouseout', () => {
+            if (selectedNoduleState === nodule.id) {
+                circle.setAttribute('stroke-width', '3');
+                circle.setAttribute('fill', 'rgba(255, 150, 150, 0.35)');
+                centerDot.setAttribute('r', '4');
+            } else {
+                circle.setAttribute('stroke-width', '1.5');
+                circle.setAttribute('fill', 'rgba(255, 150, 150, 0.15)');
+                centerDot.setAttribute('r', '3');
+            }
+        });
+        
+        centerDot.addEventListener('mouseover', () => {
+            circle.setAttribute('stroke-width', '2.5');
+            circle.setAttribute('fill', 'rgba(255, 150, 150, 0.25)');
+            centerDot.setAttribute('r', '4');
+        });
+        
+        centerDot.addEventListener('mouseout', () => {
+            if (selectedNoduleState === nodule.id) {
+                circle.setAttribute('stroke-width', '3');
+                circle.setAttribute('fill', 'rgba(255, 150, 150, 0.35)');
+                centerDot.setAttribute('r', '4');
+            } else {
+                circle.setAttribute('stroke-width', '1.5');
+                circle.setAttribute('fill', 'rgba(255, 150, 150, 0.15)');
+                centerDot.setAttribute('r', '3');
+            }
+        });
         
         svg.appendChild(circle);
         svg.appendChild(centerDot);
@@ -342,18 +694,23 @@ const InteractiveViewer = ({ caseId, selectedNoduleId, resultsPageView = false }
         }
       }
     };
-  }, [sliceImage, nodulesInSlice, currentAxis, selectedNoduleId, volumeInfo, resultsPageView]);
+  }, [sliceImage, nodulesInSlice, currentAxis, selectedNoduleState, volumeInfo, resultsPageView]);
 
   // Get max slice index for current axis
   const getMaxSliceIndex = () => {
     if (!volumeInfo) return 0;
     
-    if (currentAxis === 'axial') {
-      return volumeInfo.dimensions.depth - 1;
-    } else if (currentAxis === 'coronal') {
-      return volumeInfo.dimensions.height - 1;
-    } else { // sagittal
-      return volumeInfo.dimensions.width - 1;
+    try {
+      if (currentAxis === 'axial') {
+        return Math.max(0, volumeInfo.dimensions.depth - 1);
+      } else if (currentAxis === 'coronal') {
+        return Math.max(0, volumeInfo.dimensions.height - 1);
+      } else { // sagittal
+        return Math.max(0, volumeInfo.dimensions.width - 1);
+      }
+    } catch (error) {
+      console.error('Error determining max slice index:', error);
+      return 0;
     }
   };
 

@@ -72,3 +72,88 @@ def generate_placeholder_slice(width=512, height=512):
     buffer.seek(0)
     
     return base64.b64encode(buffer.read()).decode('utf-8') 
+
+def adaptive_window_level(slice_data, default_window=1500, default_level=-600):
+    """
+    Apply adaptive window/level based on histogram analysis of the slice.
+    
+    Args:
+        slice_data: 2D numpy array of the CT slice
+        default_window: Default window width if histogram analysis fails
+        default_level: Default window center if histogram analysis fails
+        
+    Returns:
+        tuple of (window, level) values to use for display
+    """
+    # Get histogram to analyze the intensity distribution
+    try:
+        hist, bin_edges = np.histogram(slice_data, bins=100)
+        
+        # Find the peaks in the histogram (typically air, soft tissue, and bone)
+        peak_indices = np.where((hist[1:-1] > hist[:-2]) & (hist[1:-1] > hist[2:]))[0] + 1
+        peak_values = bin_edges[peak_indices]
+        
+        if len(peak_values) >= 2:
+            # If we have at least two peaks, use them to determine window/level
+            
+            # Sort peaks by intensity
+            sorted_peaks = np.sort(peak_values)
+            
+            # Find lung tissue peak (typically around -700 to -500 HU)
+            lung_peak_candidates = [p for p in sorted_peaks if -800 < p < -400]
+            
+            if lung_peak_candidates:
+                # If we found lung peaks, set window/level to enhance that region
+                lung_peak = lung_peak_candidates[0]
+                
+                # Set window width to cover lung tissue range plus some margin
+                window = 1600  # Wider than standard lung window for better visibility
+                level = lung_peak + 100  # Slightly higher than the lung peak for better contrast
+            else:
+                # Fallback to standard lung window
+                window = default_window
+                level = default_level
+        else:
+            # Not enough peaks found, use default values
+            window = default_window
+            level = default_level
+    except Exception:
+        # In case of any errors during histogram analysis, use default values
+        window = default_window
+        level = default_level
+        
+    return window, level
+
+def enhance_contrast(image, low_percentile=5, high_percentile=95):
+    """
+    Enhance contrast using percentile-based normalization.
+    
+    Args:
+        image: Input image as numpy array
+        low_percentile: Lower percentile for contrast stretching (default: 5)
+        high_percentile: Upper percentile for contrast stretching (default: 95)
+        
+    Returns:
+        Enhanced image as uint8 numpy array
+    """
+    try:
+        # Get percentile values
+        low = np.percentile(image, low_percentile)
+        high = np.percentile(image, high_percentile)
+        
+        # Apply contrast stretching
+        enhanced = np.clip(image, low, high)
+        enhanced = ((enhanced - low) / (high - low) * 255).astype(np.uint8)
+        
+        return enhanced
+    except Exception:
+        # In case of any errors, return the original image converted to uint8
+        if image.dtype != np.uint8:
+            # Try to convert to uint8 range
+            if image.max() > 1.0:
+                # Assume image is already in 0-255 range
+                return np.clip(image, 0, 255).astype(np.uint8)
+            else:
+                # Assume image is in 0-1 range
+                return (image * 255).astype(np.uint8)
+        return image 

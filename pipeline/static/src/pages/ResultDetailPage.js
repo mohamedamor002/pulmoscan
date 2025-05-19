@@ -101,7 +101,23 @@ const ResultDetailPage = () => {
 
   // Handle nodule selection
   const handleNoduleClick = (noduleId) => {
+    // First, set the selected nodule ID which will be passed to the InteractiveViewer
     setSelectedNoduleId(noduleId);
+    
+    // Log for debugging
+    console.log(`ResultDetailPage: Clicking on nodule ID: ${noduleId}`);
+    
+    // Find the nodule in our list to get its details
+    const nodule = nodules.find(n => n.id === noduleId);
+    if (nodule) {
+      console.log(`Found nodule at coordinates z=${nodule.z}, y=${nodule.y}, x=${nodule.x}`);
+    }
+    
+    // Scroll to the InteractiveViewer component for better UX
+    const viewerElement = document.getElementById('interactive-viewer');
+    if (viewerElement) {
+      viewerElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   if (isLoading) {
@@ -159,22 +175,55 @@ const ResultDetailPage = () => {
         if (currentNodule) {
           nodules.push(currentNodule);
         }
+        
+        // Extract the ID properly, making sure to remove any trailing colon
+        const noduleIdMatch = line.match(/Nodule\s+(\S+):?/);
+        const noduleId = noduleIdMatch ? noduleIdMatch[1].replace(':', '') : line.replace(':', '').trim();
+        
         currentNodule = {
-          id: line.replace(':', '').trim(),
+          id: noduleId,
           coordinates: '',
+          x: 0,
+          y: 0, 
+          z: 0,
           radius: '',
           confidence: '',
-          merged: ''
+          merged: '',
+          malignancy: '',
+          cancer_type: '',
+          malignancy_score: '',
+          cancer_type_confidence: ''
         };
       } else if (currentNodule) {
         if (line.includes('Coordinates')) {
           currentNodule.coordinates = line.split(':')[1].trim();
+          
+          // Parse coordinates (z,y,x) from format like "(45, 256, 189)"
+          try {
+            const coordsMatch = currentNodule.coordinates.match(/\((\d+),\s*(\d+),\s*(\d+)\)/);
+            if (coordsMatch && coordsMatch.length === 4) {
+              currentNodule.z = parseInt(coordsMatch[1]);
+              currentNodule.y = parseInt(coordsMatch[2]);
+              currentNodule.x = parseInt(coordsMatch[3]);
+              console.log(`Parsed nodule ${currentNodule.id} coordinates: z=${currentNodule.z}, y=${currentNodule.y}, x=${currentNodule.x}`);
+            }
+          } catch (e) {
+            console.error('Error parsing coordinates:', e);
+          }
         } else if (line.includes('Radius')) {
           currentNodule.radius = line.split(':')[1].trim();
-        } else if (line.includes('Confidence')) {
+        } else if (line.includes('Confidence') && !line.includes('Cancer Type Confidence')) {
           currentNodule.confidence = line.split(':')[1].trim();
         } else if (line.includes('Merged from')) {
           currentNodule.merged = line.split(':')[1].trim();
+        } else if (line.includes('Malignancy Score')) {
+          currentNodule.malignancy_score = line.split(':')[1].trim();
+        } else if (line.includes('Malignancy') && !line.includes('Score')) {
+          currentNodule.malignancy = line.split(':')[1].trim();
+        } else if (line.includes('Cancer Type Confidence')) {
+          currentNodule.cancer_type_confidence = line.split(':')[1].trim();
+        } else if (line.includes('Cancer Type') && !line.includes('Confidence')) {
+          currentNodule.cancer_type = line.split(':')[1].trim();
         }
       }
     }
@@ -253,13 +302,14 @@ const ResultDetailPage = () => {
       )}
 
       {/* Interactive Visualization */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} shadow rounded-lg overflow-hidden`}>
+      <div id="interactive-viewer" className={`${darkMode ? 'bg-gray-800' : 'bg-white'} shadow rounded-lg overflow-hidden`}>
         <div className={`px-4 py-3 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'} sm:px-6`}>
           <h3 className={`text-lg font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>Interactive Visualization</h3>
         </div>
         <InteractiveViewer 
           caseId={caseId} 
           selectedNoduleId={selectedNoduleId}
+          onNoduleClick={handleNoduleClick}
         />
       </div>
 
@@ -325,6 +375,12 @@ const ResultDetailPage = () => {
                       <th scope="col" className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider`}>
                         Confidence
                       </th>
+                      <th scope="col" className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider`}>
+                        Malignancy
+                      </th>
+                      <th scope="col" className={`px-6 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase tracking-wider`}>
+                        Cancer Type
+                      </th>
                     </tr>
                   </thead>
                   <tbody className={`${darkMode ? 'bg-gray-800 divide-y divide-gray-700' : 'bg-white divide-y divide-gray-200'}`}>
@@ -332,20 +388,27 @@ const ResultDetailPage = () => {
                       <tr 
                         key={index} 
                         className={`${index % 2 === 0 ? (darkMode ? 'bg-gray-900' : 'bg-gray-50') : ''} 
-                          cursor-pointer hover:${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+                          cursor-pointer hover:${darkMode ? 'bg-gray-700' : 'bg-gray-100'}
+                          ${selectedNoduleId === nodule.id ? (darkMode ? 'bg-blue-900' : 'bg-blue-100') : ''}`}
                         onClick={() => handleNoduleClick(nodule.id)}
                       >
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                           {nodule.id}
                         </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                           {nodule.coordinates}
                         </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                           {nodule.radius}
                         </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                           {nodule.confidence}
+                        </td>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {nodule.malignancy}
+                        </td>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                          {nodule.cancer_type}
                         </td>
                       </tr>
                     ))}
@@ -354,68 +417,16 @@ const ResultDetailPage = () => {
               </div>
             </div>
           ) : (
-            <div className={`text-center py-8 ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-              <p>No nodules were detected in this scan.</p>
+            <div className={`p-4 rounded-md ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+              <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                {noduleSummary}
+              </p>
             </div>
           )}
         </div>
       </div>
-
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed z-10 inset-0 overflow-y-auto">
-          <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-              <div className={`absolute inset-0 ${darkMode ? 'bg-gray-900' : 'bg-gray-500'} opacity-75`}></div>
-            </div>
-            
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            
-            <div className={`inline-block align-bottom ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full`}>
-              <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} px-4 pt-5 pb-4 sm:p-6 sm:pb-4`}>
-                <div className="sm:flex sm:items-start">
-                  <div className={`mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full ${darkMode ? 'bg-red-900' : 'bg-red-100'} sm:mx-0 sm:h-10 sm:w-10`}>
-                    <ExclamationCircleIcon className={`h-6 w-6 ${darkMode ? 'text-red-300' : 'text-red-600'}`} aria-hidden="true" />
-                  </div>
-                  <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                    <h3 className={`text-lg leading-6 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                      Delete Scan
-                    </h3>
-                    <div className="mt-2">
-                      <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                        Are you sure you want to delete the scan "{result.case_name}"? 
-                        This action cannot be undone.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className={`${darkMode ? 'bg-gray-800 border-t border-gray-700' : 'bg-gray-50 border-t border-gray-200'} px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse`}>
-                <button
-                  type="button"
-                  onClick={handleDeleteScan}
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteModal(false)}
-                  className={`mt-3 w-full inline-flex justify-center rounded-md border shadow-sm px-4 py-2 text-base font-medium focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm ${
-                    darkMode 
-                      ? 'border-gray-600 bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-export default ResultDetailPage; 
+export default ResultDetailPage;

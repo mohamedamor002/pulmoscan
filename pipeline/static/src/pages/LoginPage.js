@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import MedicalBackground from '../components/MedicalBackground';
 
 const LoginPage = () => {
   const [username, setUsername] = useState('');
@@ -59,53 +60,15 @@ const LoginPage = () => {
     }
   };
 
-  // CSS styles for the animated background
-  const animatedBgStyles = {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: -1,
-    background: darkMode 
-      ? 'linear-gradient(135deg, #1f2937 0%, #111827 100%)' 
-      : 'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)',
-    overflow: 'hidden',
-  };
-
   return (
     <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-transparent' : 'bg-transparent'} py-12 px-4 sm:px-6 lg:px-8 relative`}>
-      {/* Animated background */}
-      <div style={animatedBgStyles}>
-        <div className="medical-animation">
-          {Array(6).fill().map((_, index) => (
-            <div 
-              key={index}
-              className={`medical-symbol ${darkMode ? 'medical-symbol-dark' : 'medical-symbol-light'}`}
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${index * 0.5}s`,
-                opacity: 0.4 - (index * 0.05),
-              }}
-            >
-              +
-            </div>
-          ))}
-          <div className={`pulse-circle ${darkMode ? 'pulse-circle-dark' : 'pulse-circle-light'}`}></div>
-        </div>
-      </div>
+      {/* Use the default MedicalBackground component that cycles through all animations */}
+      <MedicalBackground />
 
-      <div className={`max-w-md w-full space-y-8 p-10 rounded-xl shadow-lg ${darkMode ? 'bg-gray-800' : 'bg-white'} relative z-10`}>
+      <div className={`max-w-md w-full space-y-8 p-10 rounded-xl shadow-lg ${darkMode ? 'bg-gray-800 bg-opacity-90' : 'bg-white bg-opacity-90'} relative z-10`}>
         <div>
-          <h1 className={`text-center text-4xl font-extrabold ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`}>
-            PulmoScan
-          </h1>
-          <div className="flex justify-center mt-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className={`h-14 w-14 ${darkMode ? 'text-indigo-300' : 'text-indigo-500'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 12a3 3 0 00-3 3m0 0 3 3m-3-3h6" />
-            </svg>
+          <div className="flex justify-center">
+            <img src="/images/logo/Logo (1).png" alt="PulmoScan Logo" className="h-48 w-auto" />
           </div>
           <h2 className={`mt-3 text-center text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
             Lung Nodule Detection System
@@ -223,80 +186,6 @@ const LoginPage = () => {
           </div>
         </form>
       </div>
-
-      {/* Add CSS styles for the animations */}
-      <style jsx="true">{`
-        .medical-animation {
-          width: 100%;
-          height: 100%;
-          position: relative;
-          overflow: hidden;
-        }
-        
-        .medical-symbol {
-          position: absolute;
-          font-size: 50px;
-          font-weight: bold;
-          transform: rotate(0deg);
-          animation: float 20s linear infinite;
-        }
-        
-        .medical-symbol-light {
-          color: rgba(79, 70, 229, 0.1);
-        }
-        
-        .medical-symbol-dark {
-          color: rgba(129, 140, 248, 0.1);
-        }
-        
-        @keyframes float {
-          0% {
-            transform: rotate(0deg) translate(0, 0);
-            opacity: 0;
-          }
-          25% {
-            opacity: 0.8;
-          }
-          100% {
-            transform: rotate(360deg) translate(100px, 100px);
-            opacity: 0;
-          }
-        }
-        
-        .pulse-circle {
-          position: absolute;
-          width: 300px;
-          height: 300px;
-          border-radius: 50%;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          animation: pulse 10s ease-in-out infinite;
-        }
-        
-        .pulse-circle-light {
-          background: radial-gradient(circle, rgba(79, 70, 229, 0.1) 0%, rgba(255, 255, 255, 0) 70%);
-        }
-        
-        .pulse-circle-dark {
-          background: radial-gradient(circle, rgba(129, 140, 248, 0.1) 0%, rgba(31, 41, 55, 0) 70%);
-        }
-        
-        @keyframes pulse {
-          0% {
-            transform: translate(-50%, -50%) scale(0.8);
-            opacity: 0.3;
-          }
-          50% {
-            transform: translate(-50%, -50%) scale(1.2);
-            opacity: 0.7;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(0.8);
-            opacity: 0.3;
-          }
-        }
-      `}</style>
     </div>
   );
 };
