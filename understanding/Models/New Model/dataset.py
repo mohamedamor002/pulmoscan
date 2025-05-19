@@ -34,29 +34,73 @@ class NoduleDataset(Dataset):
     
     def load_volume(self, series_uid):
         """Load and preprocess CT volume for a given series UID."""
-        # locate the CT scan file
+        # Try to locate the CT scan file in various possible locations
         ct_path = None
+        
+        # First check in regular subset directories
         for subset in range(10):
             p = self.data_dir / f'subset{subset}' / f'{series_uid}.mhd'
             if p.exists():
                 ct_path = p
+                print(f"Found CT scan for {series_uid} in subset{subset}")
                 break
+        
+        # If not found, check in segmented lungs directory
         if ct_path is None:
+            segmented_path = self.data_dir / 'seg-lungs-LUNA16' / 'seg-lungs-LUNA16' / f'{series_uid}.mhd'
+            if segmented_path.exists():
+                ct_path = segmented_path
+                print(f"Using segmented lungs for {series_uid}")
+        
+        if ct_path is None:
+            # Check if any of the directories exist
+            print(f"Checking directories for {series_uid}:")
+            for subset in range(10):
+                subset_dir = self.data_dir / f'subset{subset}'
+                if subset_dir.exists():
+                    print(f"  subset{subset} exists at {subset_dir}")
+                else:
+                    print(f"  subset{subset} does not exist")
+            
             raise FileNotFoundError(f"CT scan not found for series {series_uid}")
 
-        # read the image
-        ct_image = sitk.ReadImage(str(ct_path))
-        ct_array = sitk.GetArrayFromImage(ct_image)  # (Z, Y, X)
+        # Check for the raw file too
+        raw_path = ct_path.with_suffix('.raw')
+        zraw_path = ct_path.with_suffix('.zraw')
+        
+        if not raw_path.exists() and not zraw_path.exists():
+            print(f"Warning: .mhd file exists but .raw or .zraw file not found for {series_uid}")
+            # Check the MHD file to see what raw file it's looking for
+            try:
+                with open(ct_path, 'r') as f:
+                    mhd_content = f.read()
+                    print(f"MHD file content for {series_uid}:")
+                    print(mhd_content)
+            except Exception as e:
+                print(f"Error reading MHD file: {e}")
 
-        # clip to [-1000, 400] HU, then normalize to [0, 1]
-        ct_array = np.clip(ct_array, -1000, 400)
-        ct_array = (ct_array - ct_array.min()) / (ct_array.max() - ct_array.min())
+        # read the image with better error handling
+        try:
+            print(f"Loading CT image from: {ct_path}")
+            ct_image = sitk.ReadImage(str(ct_path))
+            print(f"Successfully read image")
+            ct_array = sitk.GetArrayFromImage(ct_image)  # (Z, Y, X)
+            print(f"Converted to numpy array with shape {ct_array.shape}")
 
-        spacing = ct_image.GetSpacing()  # (x, y, z)
-        origin  = ct_image.GetOrigin()
+            # clip to [-1000, 400] HU, then normalize to [0, 1]
+            ct_array = np.clip(ct_array, -1000, 400)
+            ct_array = (ct_array - ct_array.min()) / (ct_array.max() - ct_array.min())
 
-        print(f"Series UID: {series_uid}, CT shape={ct_array.shape}, spacing={spacing}, origin={origin}")
-        return ct_array, spacing, origin
+            spacing = ct_image.GetSpacing()  # (x, y, z)
+            origin  = ct_image.GetOrigin()
+
+            print(f"Series UID: {series_uid}, CT shape={ct_array.shape}, spacing={spacing}, origin={origin}")
+            return ct_array, spacing, origin
+        except Exception as e:
+            print(f"Error loading CT scan {series_uid}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def create_nodule_mask(self, volume_shape, annotations, spacing, origin):
         """Create binary mask for nodules."""
