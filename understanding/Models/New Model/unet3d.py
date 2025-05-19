@@ -142,10 +142,8 @@ class UNet3D(nn.Module):
         self.up4 = Up(128, 64, attention=use_attention)
         self.up5 = Up(64, 32, attention=use_attention)
         
-        # Output layer
-        self.outc = OutConv(32, out_channels)
-        
-        # Updated detection head in UNet3D class __init__ method
+        # Removed segmentation output layer
+        # Only keep detection head
         self.det_head = nn.Sequential(
             # Global average pooling to collapse spatial dimensions
             nn.AdaptiveAvgPool3d(1),
@@ -212,10 +210,7 @@ class UNet3D(nn.Module):
         
         feature_maps = self.up5(x, x1)
         
-        # Main segmentation output
-        logits = self.outc(feature_maps)
-        
-        # Detection output - completely separate path from the same features
+        # Only return detection coordinates
         det_coords = self.det_head(feature_maps)
         
-        return logits, det_coords 
+        return det_coords 
