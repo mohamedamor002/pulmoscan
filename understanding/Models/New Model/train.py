@@ -14,6 +14,7 @@ import json
 from torchinfo import summary as model_summary
 import matplotlib.pyplot as plt
 import random
+import pandas as pd
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent.parent
@@ -266,8 +267,8 @@ def train_preloaded(model, preloaded_data, criterion, optimizer, device, logger)
                 
                 optimizer.zero_grad()
                 
-                # Forward pass - get both outputs but only use detection
-                mask_pred, det_pred = model(data)
+                # Forward pass - now model only returns detection coordinates
+                det_pred = model(data)
                 loss = criterion(det_pred, det_target)
                 loss.backward()
                 
@@ -309,8 +310,8 @@ def evaluate_preloaded(model, preloaded_data, criterion, device, logger):
                     data = data.to(device)
                     det_target = det_target.to(device)
                     
-                    # Forward pass - get both outputs but only use detection
-                    _, det_output = model(data)
+                    # Forward pass - now model only returns detection coordinates
+                    det_output = model(data)
                     
                     # Calculate detection loss
                     loss = criterion(det_output, det_target)
@@ -374,7 +375,7 @@ def save_model_architecture(model, save_dir):
     model_info = model_summary(model, input_size=(1, 1, 64, 64, 64), verbose=0)
     
     # Save as text
-    with open(save_dir / 'model_architecture.txt', 'w', encoding='utf-8') as f:
+    with open(save_dir / 'model_architecture_detection_only.txt', 'w', encoding='utf-8') as f:
         f.write(str(model_info))
     
     # Save parameter count summary
@@ -388,7 +389,7 @@ def save_model_architecture(model, save_dir):
         'model_size_mb': total_params * 4 / (1024 * 1024)  # Approximate size in MB (4 bytes per float32 param)
     }
     
-    with open(save_dir / 'model_params.json', 'w', encoding='utf-8') as f:
+    with open(save_dir / 'model_params_detection_only.json', 'w', encoding='utf-8') as f:
         json.dump(params_summary, f, indent=4)
     
     print(f"Model summary saved to {save_dir}")
@@ -423,8 +424,8 @@ def visualize_detection_results(model, data_samples, device, save_dir):
                 # Move to device
                 data = data.to(device)
                 
-                # Forward pass
-                _, det_output = model(data)
+                # Forward pass - now model only returns detection coordinates
+                det_output = model(data)
                 
                 # Convert to numpy for visualization
                 volume = data.cpu().numpy()[0, 0]  # (D, H, W)
@@ -538,15 +539,109 @@ def main():
     
     # Create dataset with correct paths
     logger.info("Creating dataset from preprocessed annotations...")
-    # root folder with CT scans
-    data_dir = Path("data/Luna16").resolve()
-    # use the processed CSV in this script's directory
+    
+    # Use absolute paths to avoid any resolution issues
+    # This gets the absolute path to the data directory
+    data_dir = Path("../../data/Luna16").resolve()
+    logger.info(f"Data directory: {data_dir}")
+    
+    # Check if the data directory exists
+    if not data_dir.exists():
+        logger.error(f"Data directory does not exist: {data_dir}")
+        data_dir = Path("data/Luna16").resolve()
+        logger.info(f"Trying alternative data directory: {data_dir}")
+        if not data_dir.exists():
+            logger.error(f"Alternative data directory also does not exist")
+            return
+    
+    # Check if subset directories exist and list them
+    subset_dirs = []
+    for i in range(10):
+        subset_path = data_dir / f"subset{i}"
+        if subset_path.exists():
+            subset_dirs.append(subset_path)
+            logger.info(f"Found subset directory: {subset_path}")
+            # List a few files to verify content
+            mhd_files = list(subset_path.glob("*.mhd"))
+            logger.info(f"  Contains {len(mhd_files)} .mhd files")
+            if mhd_files:
+                logger.info(f"  Example file: {mhd_files[0].name}")
+    
+    if not subset_dirs:
+        logger.error("No subset directories found!")
+        return
+    
+    # Use the processed CSV in this script's directory
     annotations_file = Path(__file__).parent / "processed_annotations.csv"
+    logger.info(f"Annotations file: {annotations_file}")
+    
+    if not annotations_file.exists():
+        logger.error(f"Annotations file not found: {annotations_file}")
+        return
+    
+    # Read a few rows from the annotations file to verify
+    try:
+        df = pd.read_csv(annotations_file)
+        logger.info(f"Annotations file contains {len(df)} rows")
+        if len(df) > 0:
+            # Get the first few series UIDs
+            sample_uids = df['seriesuid'].unique()[:5]
+            logger.info(f"Sample series UIDs: {sample_uids}")
+            
+            # Check if these UIDs exist in the dataset
+            for uid in sample_uids:
+                found = False
+                for subset_dir in subset_dirs:
+                    if (subset_dir / f"{uid}.mhd").exists():
+                        logger.info(f"Found CT scan for {uid} in {subset_dir.name}")
+                        found = True
+                        break
+                if not found:
+                    logger.warning(f"CT scan for {uid} not found in any subset directory")
+    except Exception as e:
+        logger.error(f"Error reading annotations file: {e}")
+        return
     
     # Create transforms
     transforms = NoduleTransforms(p=0.5)
     
-    # Create dataset with smaller cache size
+    # Try creating a test dataset with one sample to verify loading works
+    try:
+        test_dataset = NoduleDataset(
+            data_dir=data_dir,
+            annotations_file=annotations_file,
+            patch_size=(64, 64, 64),
+            transform=None  # No transform for testing
+        )
+        
+        if len(test_dataset) > 0:
+            logger.info(f"Test dataset contains {len(test_dataset)} samples")
+            # Try loading the first sample
+            sample_idx = 0
+            try:
+                logger.info(f"Attempting to load sample {sample_idx}...")
+                series_uid, nodule_idx = test_dataset.samples[sample_idx]
+                logger.info(f"Sample series UID: {series_uid}, nodule index: {nodule_idx}")
+                
+                # Test loading the volume
+                logger.info("Testing volume loading...")
+                ct_array, spacing, origin = test_dataset.load_volume(series_uid)
+                logger.info(f"Successfully loaded volume with shape {ct_array.shape}")
+                
+                # Continue with normal dataset creation now that we've confirmed loading works
+                logger.info("Creating full dataset...")
+            except Exception as e:
+                logger.error(f"Error loading first sample: {e}")
+                raise
+        else:
+            logger.error("Test dataset is empty!")
+            return
+            
+    except Exception as e:
+        logger.error(f"Error creating test dataset: {e}")
+        return
+    
+    # Create the full dataset
     dataset = NoduleDataset(
         data_dir=data_dir,
         annotations_file=annotations_file,
@@ -597,8 +692,8 @@ def main():
         pin_memory=True
     )
     
-    # Create model - use standard UNet3D with 1 input channel and 1 output channel for segmentation
-    # The detection outputs come from a separate path in the UNet3D class
+    # Create model - use standard UNet3D with 1 input channel and 1 output channel
+    # Now UNet3D only outputs detection coordinates
     model = UNet3D(in_channels=1, out_channels=1).to(device)
     
     # Initialize model weights properly
@@ -614,7 +709,7 @@ def main():
     model.apply(init_weights)
     
     # Save model architecture summary
-    metrics_dir = Path(__file__).parent / "model_metrics"
+    metrics_dir = Path(__file__).parent / "model_metrics_detection_only"
     save_model_architecture(model, metrics_dir)
     
     # Loss function for detection only
@@ -643,7 +738,7 @@ def main():
     # Save under models/ next to this script
     models_dir = Path(__file__).parent / "models"
     models_dir.mkdir(exist_ok=True)
-    best_model_path = models_dir / "best_model_detection_only.pth"
+    best_model_path = models_dir / "best_model_detection_only.pt"
     
     # Early stopping parameters
     early_stopping_patience = 5
@@ -735,9 +830,9 @@ def main():
             plt.title('Training Loss vs Validation Accuracy')
             plt.grid(True)
             plt.tight_layout()
-            plt.savefig(metrics_dir / "training_metrics.png")
+            plt.savefig(metrics_dir / "training_metrics_detection_only.png")
             plt.close()
-            logger.info(f"Saved training_metrics.png")
+            logger.info(f"Saved training_metrics_detection_only.png")
         except Exception as e:
             logger.warning(f"Failed to plot metrics: {e}")
 
@@ -765,7 +860,7 @@ def main():
             logger.info("Using current model state for visualizations.")
         
         # Create visualization directory
-        vis_dir = Path(__file__).parent / "visualizations"
+        vis_dir = Path(__file__).parent / "visualizations_detection_only"
         vis_dir.mkdir(exist_ok=True, parents=True)
         
         # Select 5 random samples from validation set for visualization
