@@ -5,18 +5,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from torch.amp import autocast, GradScaler
-import torch.multiprocessing as mp
-from torchvision import transforms
 import logging
 from pathlib import Path
 from tqdm import tqdm
 import time
 from datetime import datetime
-import torch.nn.functional as F
 import json
 from torchinfo import summary as model_summary
 import matplotlib.pyplot as plt
+import random
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent.parent
@@ -101,225 +98,6 @@ class NoduleTransforms:
         
         return volume_tensor, mask_tensor
 
-class CombinedBCEDiceLoss(nn.Module):
-    """Combined BCE and Dice loss for better segmentation"""
-    def __init__(self, bce_weight=0.7, dice_weight=0.3, smooth=1e-5):
-        super().__init__()
-        self.bce_weight = bce_weight
-        self.dice_weight = dice_weight
-        self.smooth = smooth
-        self.bce = nn.BCEWithLogitsLoss()
-    
-    def dice_loss(self, pred, target):
-        pred = torch.sigmoid(pred)
-        pred = pred.view(-1)
-        target = target.view(-1)
-        
-        intersection = (pred * target).sum()
-        dice = (2. * intersection + self.smooth) / (pred.sum() + target.sum() + self.smooth)
-        return 1 - dice
-    
-    def forward(self, pred, target):
-        bce = self.bce(pred, target)
-        dice = self.dice_loss(pred, target)
-        return self.bce_weight * bce + self.dice_weight * dice
-
-def dice_score(pred, target, smooth=1e-5):
-    """Calculate Dice score for evaluation"""
-    pred = torch.sigmoid(pred)
-    pred = (pred > 0.5).float()
-    
-    pred = pred.view(-1)
-    target = target.view(-1)
-    
-    intersection = (pred * target).sum()
-    dice = (2. * intersection + smooth) / (pred.sum() + target.sum() + smooth)
-    return dice
-
-def train_epoch(model, dataloader, criterion, optimizer, device, logger):
-    """Train the model for one epoch"""
-    model.train()
-    epoch_loss = 0
-    epoch_dice = 0
-    batch_count = 0
-    
-    with tqdm(dataloader, desc='Training') as pbar:
-        for batch_idx, (data, target, det_target) in enumerate(pbar):
-            try:
-                data       = data.to(device)
-                target     = target.to(device)
-                det_target = det_target.to(device)
-                
-                optimizer.zero_grad()
-                
-                # Standard forward pass without mixed precision
-                mask_pred, det_pred = model(data)
-                loss_seg = criterion(mask_pred, target)
-                loss_reg = nn.MSELoss()(det_pred, det_target)
-                loss = loss_seg + loss_reg
-                dice = dice_score(mask_pred, target)
-                
-                # Handle NaN or inf values
-                if torch.isnan(loss) or torch.isinf(loss):
-                    logger.warning(f"Warning: NaN or inf loss detected in batch {batch_idx}. Skipping.")
-                    continue
-                
-                # Standard backward pass and optimization
-                loss.backward()
-                
-                # Gradient clipping
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                
-                optimizer.step()
-                
-                epoch_loss += loss.item()
-                epoch_dice += dice.item()
-                batch_count += 1
-                
-                pbar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'dice': f'{dice.item():.4f}'
-                })
-            except Exception as e:
-                logger.error(f"Error in batch {batch_idx}: {e}")
-                continue
-    
-    if batch_count > 0:
-        epoch_loss /= batch_count
-        epoch_dice /= batch_count
-    
-    logger.info(f'Training Loss: {epoch_loss:.4f}, Dice Score: {epoch_dice:.4f}')
-    return epoch_loss, epoch_dice
-
-def evaluate(model, dataloader, criterion, device, logger):
-    """Evaluate the model on the validation set"""
-    model.eval()
-    val_loss = 0
-    val_dice = 0
-    val_detection_accuracy = 0.0  # New metric
-    batch_count = 0
-    
-    with torch.no_grad():
-        with tqdm(dataloader, desc='Validation') as pbar:
-            for batch_idx, batch in enumerate(pbar):
-                try:
-                    # Handle different batch formats
-                    if len(batch) == 3:  # If it contains (data, target, det_target)
-                        data, target, det_target = batch
-                        data = data.to(device)
-                        target = target.to(device)
-                        det_target = det_target.to(device)
-                        
-                        # Forward pass
-                        mask_output, det_output = model(data)
-                        
-                        # Calculate losses
-                        loss_seg = criterion(mask_output, target)
-                        loss_reg = nn.MSELoss()(det_output, det_target)
-                        loss = loss_seg + loss_reg
-                        
-                        # Calculate detection accuracy
-                        detection_accuracy = calculate_nodule_detection_accuracy(
-                            det_output, target, volume_shape=target.shape[1:])
-                    else:  # If it only contains (data, target)
-                        data, target = batch
-                        data = data.to(device)
-                        target = target.to(device)
-                        
-                        # Forward pass
-                        mask_output, det_output = model(data)
-                        
-                        # Only use segmentation loss
-                        loss = criterion(mask_output, target)
-                        
-                        # Calculate detection accuracy using target as stand-in for detection target
-                        detection_accuracy = calculate_nodule_detection_accuracy(
-                            det_output, target, volume_shape=target.shape[1:])
-                    
-                    # Calculate dice score
-                    dice = dice_score(mask_output, target)
-                    
-                    val_loss += loss.item()
-                    val_dice += dice.item()
-                    val_detection_accuracy += detection_accuracy
-                    batch_count += 1
-                    
-                    pbar.set_postfix({
-                        'loss': f'{loss.item():.4f}',
-                        'dice': f'{dice.item():.4f}'
-                    })
-                except Exception as e:
-                    logger.error(f"Error in validation batch {batch_idx}: {e}")
-                    continue
-    
-    if batch_count > 0:
-        val_loss /= batch_count
-        val_dice /= batch_count
-        val_detection_accuracy /= batch_count
-    
-    logger.info(f'Validation Loss: {val_loss:.4f}, Dice Score: {val_dice:.4f}')
-    logger.info(f'Nodule Detection Accuracy: {val_detection_accuracy:.2f}%')
-    return val_loss, val_dice, val_detection_accuracy
-
-def preload_data(dataset, loader, logger):
-    """Preload all data into memory to avoid disk bottlenecks during training."""
-    logger.info("Preloading data to avoid disk I/O during training...")
-    preloaded_data = []
-    
-    with tqdm(loader, desc='Preloading') as pbar:
-        for batch_idx, batch in enumerate(pbar):
-            # Check the length of the batch tuple
-            if len(batch) == 3:  # If it contains (data, target, det_target)
-                data, target, det_target = batch
-                preloaded_data.append((data, target, det_target))
-            else:  # If it only contains (data, target)
-                data, target = batch
-                preloaded_data.append((data, target))
-            
-            pbar.set_postfix({'loaded': f'{batch_idx+1}/{len(loader)}'})
-    
-    logger.info(f"Preloaded {len(preloaded_data)} batches")
-    return preloaded_data
-
-def train_preloaded(model, preloaded_data, criterion, optimizer, device, logger):
-    """Train the model on preloaded data (detection only)"""
-    model.train()
-    epoch_loss = 0
-    batch_count = 0
-    
-    with tqdm(preloaded_data, desc='Training Detection') as pbar:
-        for batch_idx, batch in enumerate(pbar):
-            try:
-                # only look at batches with a detection target
-                if len(batch) != 3:
-                    continue
-                # batch = (data, mask, det_target)
-                data, _, det_target = batch
-                data, det_target = data.to(device), det_target.to(device)
-                
-                optimizer.zero_grad()
-                
-                # forward & detection MSE
-                _, det_pred = model(data)
-                loss = criterion(det_pred, det_target)
-                loss.backward()
-                
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-                optimizer.step()
-                
-                epoch_loss += loss.item()
-                batch_count += 1
-                
-                pbar.set_postfix({'mse': f'{loss.item():.4f}'})
-            except Exception as e:
-                logger.error(f"Error in batch {batch_idx}: {e}")
-                continue
-    
-    if batch_count > 0:
-        epoch_loss /= batch_count
-    logger.info(f'Training Detection MSE: {epoch_loss:.4f}')
-    return epoch_loss
-
 def calculate_detection_metrics(pred_coords, gt_coords, volume_shape):
     """
     Calculate detection accuracy metrics
@@ -390,7 +168,7 @@ def calculate_detection_metrics(pred_coords, gt_coords, volume_shape):
         'detection_rate': detection_success_rate  # Higher is better (0-1)
     }
 
-def calculate_nodule_detection_accuracy(pred_coords, target, volume_shape, distance_threshold=None):
+def calculate_nodule_detection_accuracy(pred_coords, target, volume_shape):
     """
     Calculate detection accuracy by checking if predicted coordinates fall within the nodule mask
     
@@ -398,7 +176,6 @@ def calculate_nodule_detection_accuracy(pred_coords, target, volume_shape, dista
         pred_coords: Predicted normalized [z,y,x,r] coordinates, tensor of shape [batch_size, 4]
         target: Ground truth segmentation mask
         volume_shape: Shape of the volume (D, H, W) 
-        distance_threshold: Optional parameter, not used
         
     Returns:
         detection_accuracy: Percentage of correctly detected nodules (0-100%)
@@ -459,10 +236,6 @@ def calculate_nodule_detection_accuracy(pred_coords, target, volume_shape, dista
                 # Consider hit if value > 0.5 (binary mask threshold)
                 if mask_value > 0.5:
                     correct_detections += 1
-                    
-                # Debug output for first few samples
-                if i < 5:
-                    print(f"Sample {i}: Coords [{z_norm:.2f}, {y_norm:.2f}, {x_norm:.2f}] -> [{z_voxel}, {y_voxel}, {x_voxel}], Mask value: {mask_value:.2f}")
         
         # Calculate accuracy
         accuracy = (correct_detections / batch_size) * 100
@@ -474,11 +247,50 @@ def calculate_nodule_detection_accuracy(pred_coords, target, volume_shape, dista
         traceback.print_exc()
         return 0.0
 
+def train_preloaded(model, preloaded_data, criterion, optimizer, device, logger):
+    """Train the model on preloaded data (detection only)"""
+    model.train()
+    epoch_loss = 0
+    batch_count = 0
+    
+    with tqdm(preloaded_data, desc='Training Detection') as pbar:
+        for batch_idx, batch in enumerate(pbar):
+            try:
+                # Extract data and detection target
+                if len(batch) == 3:  # (data, mask, det_target)
+                    data, _, det_target = batch
+                else:  # If it only contains (data, target), use target as det_target for compatibility
+                    data, det_target = batch
+                
+                data, det_target = data.to(device), det_target.to(device)
+                
+                optimizer.zero_grad()
+                
+                # Forward pass - get both outputs but only use detection
+                mask_pred, det_pred = model(data)
+                loss = criterion(det_pred, det_target)
+                loss.backward()
+                
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                
+                epoch_loss += loss.item()
+                batch_count += 1
+                
+                pbar.set_postfix({'mse': f'{loss.item():.4f}'})
+            except Exception as e:
+                logger.error(f"Error in batch {batch_idx}: {e}")
+                continue
+    
+    if batch_count > 0:
+        epoch_loss /= batch_count
+    logger.info(f'Training Detection MSE: {epoch_loss:.4f}')
+    return epoch_loss
+
 def evaluate_preloaded(model, preloaded_data, criterion, device, logger):
     """Evaluate the model on preloaded validation data"""
     model.eval()
     val_loss = 0
-    val_dice = 0
     val_detection_accuracy = 0.0
     batch_count = 0
     
@@ -488,38 +300,38 @@ def evaluate_preloaded(model, preloaded_data, criterion, device, logger):
                 try:
                     # Unpack batch data safely
                     if len(batch) == 3:  # (data, target, det_target)
-                        data, target, _ = batch  # Ignore det_target for simplicity
+                        data, target, det_target = batch
                     else:  # (data, target)
                         data, target = batch
+                        det_target = target  # Use target as det_target for compatibility
                     
                     # Move to device
                     data = data.to(device)
-                    target = target.to(device)
+                    det_target = det_target.to(device)
                     
-                    # Forward pass
-                    mask_output, det_output = model(data)
+                    # Forward pass - get both outputs but only use detection
+                    _, det_output = model(data)
                     
-                    # Calculate segmentation loss
-                    loss = criterion(mask_output, target)
-                    dice = dice_score(mask_output, target)
+                    # Calculate detection loss
+                    loss = criterion(det_output, det_target)
                     
-                    # Calculate detection accuracy - without using det_target
+                    # Calculate detection accuracy using target mask
                     try:
                         detection_accuracy = calculate_nodule_detection_accuracy(
-                            det_output, target, volume_shape=target.shape[2:] if len(target.shape) > 3 else target.shape[1:])
+                            det_output, target, 
+                            volume_shape=target.shape[2:] if len(target.shape) > 3 else target.shape[1:])
                     except Exception as e:
                         logger.warning(f"Detection accuracy calculation failed: {e}")
                         detection_accuracy = 0.0
                     
                     # Update metrics
                     val_loss += loss.item()
-                    val_dice += dice.item()
                     val_detection_accuracy += detection_accuracy
                     batch_count += 1
                     
                     pbar.set_postfix({
                         'loss': f'{loss.item():.4f}',
-                        'dice': f'{dice.item():.4f}'
+                        'det_acc': f'{detection_accuracy:.2f}%'
                     })
                 except Exception as e:
                     logger.error(f"Error in validation batch {batch_idx}: {e}")
@@ -527,12 +339,31 @@ def evaluate_preloaded(model, preloaded_data, criterion, device, logger):
     
     if batch_count > 0:
         val_loss /= batch_count
-        val_dice /= batch_count
         val_detection_accuracy /= batch_count
     
-    logger.info(f'Validation Loss: {val_loss:.4f}, Dice Score: {val_dice:.4f}')
+    logger.info(f'Validation Loss: {val_loss:.4f}')
     logger.info(f'Nodule Detection Accuracy: {val_detection_accuracy:.2f}%')
-    return val_loss, val_dice, val_detection_accuracy
+    return val_loss, val_detection_accuracy
+
+def preload_data(dataset, loader, logger):
+    """Preload all data into memory to avoid disk bottlenecks during training."""
+    logger.info("Preloading data to avoid disk I/O during training...")
+    preloaded_data = []
+    
+    with tqdm(loader, desc='Preloading') as pbar:
+        for batch_idx, batch in enumerate(pbar):
+            # Check the length of the batch tuple
+            if len(batch) == 3:  # If it contains (data, target, det_target)
+                data, target, det_target = batch
+                preloaded_data.append((data, target, det_target))
+            else:  # If it only contains (data, target)
+                data, target = batch
+                preloaded_data.append((data, target))
+            
+            pbar.set_postfix({'loaded': f'{batch_idx+1}/{len(loader)}'})
+    
+    logger.info(f"Preloaded {len(preloaded_data)} batches")
+    return preloaded_data
 
 def save_model_architecture(model, save_dir):
     """Save the model architecture summary"""
@@ -565,6 +396,118 @@ def save_model_architecture(model, save_dir):
     
     return model_info, params_summary
 
+def visualize_detection_results(model, data_samples, device, save_dir):
+    """
+    Visualize detection results on a sample of scans with simplified view
+    
+    Args:
+        model: Trained model
+        data_samples: List of (data, target) tuples
+        device: Device to run model on
+        save_dir: Directory to save visualizations
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
+    
+    model.eval()
+    
+    with torch.no_grad():
+        for i, sample in enumerate(data_samples):
+            try:
+                # Get data and ground truth
+                if len(sample) == 3:  # (data, target, det_target)
+                    data, target, _ = sample
+                else:  # (data, target)
+                    data, target = sample
+                
+                # Move to device
+                data = data.to(device)
+                
+                # Forward pass
+                _, det_output = model(data)
+                
+                # Convert to numpy for visualization
+                volume = data.cpu().numpy()[0, 0]  # (D, H, W)
+                mask = target.cpu().numpy()
+                if len(mask.shape) > 3:
+                    mask = mask[0, 0] if len(mask.shape) == 5 else mask[0]  # (D, H, W)
+                
+                pred_coords = det_output.cpu().numpy()[0]  # (4,) -> z, y, x, r
+                
+                # Get dimensions
+                D, H, W = volume.shape
+                
+                # Normalize coordinates to voxel space
+                z_norm, y_norm, x_norm, r_norm = pred_coords
+                z_voxel = int(min(max(z_norm * D, 0), D-1))
+                y_voxel = int(min(max(y_norm * H, 0), H-1))
+                x_voxel = int(min(max(x_norm * W, 0), W-1))
+                
+                # Create simplified visualizations for 3 orthogonal slices through the predicted center
+                fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+                
+                # Axial view (x-y plane at z)
+                axes[0].imshow(volume[z_voxel], cmap='gray')
+                
+                # Add marker for prediction center (red X)
+                axes[0].scatter(x_voxel, y_voxel, c='r', marker='x', s=100, linewidths=2)
+                
+                # For this slice, show ground truth mask as overlay instead of circle
+                if 0 <= z_voxel < mask.shape[0]:
+                    mask_slice = mask[z_voxel]
+                    # Only draw contour if there are non-zero values in this slice
+                    if np.any(mask_slice > 0.5):
+                        axes[0].contour(mask_slice, levels=[0.5], colors='g', linewidths=2)
+                
+                axes[0].set_title(f'Axial Slice (z={z_voxel})')
+                
+                # Coronal view (x-z plane at y)
+                axes[1].imshow(volume[:, y_voxel, :].T, cmap='gray')
+                
+                # Add marker for prediction center (red X)
+                axes[1].scatter(z_voxel, x_voxel, c='r', marker='x', s=100, linewidths=2)
+                
+                # For this slice, show ground truth mask as overlay
+                if 0 <= y_voxel < mask.shape[1]:
+                    mask_slice = mask[:, y_voxel, :].T
+                    # Only draw contour if there are non-zero values in this slice
+                    if np.any(mask_slice > 0.5):
+                        axes[1].contour(mask_slice, levels=[0.5], colors='g', linewidths=2)
+                
+                axes[1].set_title(f'Coronal Slice (y={y_voxel})')
+                
+                # Sagittal view (y-z plane at x)
+                axes[2].imshow(volume[:, :, x_voxel].T, cmap='gray')
+                
+                # Add marker for prediction center (red X)
+                axes[2].scatter(z_voxel, y_voxel, c='r', marker='x', s=100, linewidths=2)
+                
+                # For this slice, show ground truth mask as overlay
+                if 0 <= x_voxel < mask.shape[2]:
+                    mask_slice = mask[:, :, x_voxel].T
+                    # Only draw contour if there are non-zero values in this slice
+                    if np.any(mask_slice > 0.5):
+                        axes[2].contour(mask_slice, levels=[0.5], colors='g', linewidths=2)
+                
+                axes[2].set_title(f'Sagittal Slice (x={x_voxel})')
+                
+                # Add a legend
+                legend_elements = [
+                    plt.Line2D([0], [0], marker='x', color='w', markerfacecolor='r', markersize=10, label='Predicted Center'),
+                    plt.Line2D([0], [0], color='g', lw=2, label='Ground Truth Boundary')
+                ]
+                axes[0].legend(handles=legend_elements, loc='lower right')
+                
+                plt.tight_layout()
+                plt.savefig(save_dir / f"detection_result_{i+1}.png")
+                plt.close()
+                
+            except Exception as e:
+                print(f"Error visualizing sample {i}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+
 def main():
     # Enable deterministic training for reproducibility
     torch.backends.cudnn.deterministic = False  # Disable for better performance
@@ -596,14 +539,12 @@ def main():
     # Create dataset with correct paths
     logger.info("Creating dataset from preprocessed annotations...")
     # root folder with CT scans
-    data_dir = "C:/Users/PC/Downloads/Project/data/Luna16"
-    annotations_file = "C:/Users/PC/Downloads/Project/data/Luna16/processed_annotations.csv"
+    data_dir = Path("data/Luna16").resolve()
+    # use the processed CSV in this script's directory
+    annotations_file = Path(__file__).parent / "processed_annotations.csv"
     
     # Create transforms
     transforms = NoduleTransforms(p=0.5)
-    
-    # Disable mixed precision for now - simplify training
-    # scaler = GradScaler()
     
     # Create dataset with smaller cache size
     dataset = NoduleDataset(
@@ -650,13 +591,14 @@ def main():
     val_loader = DataLoader(
         val_dataset,
         batch_size=1,  # Minimum batch size
-                            shuffle=False,
+        shuffle=False,
         sampler=LimitedSampler(val_dataset, val_size),  # Use all validation samples
         num_workers=0,
         pin_memory=True
     )
     
-    # Create model with correct parameters
+    # Create model - use standard UNet3D with 1 input channel and 1 output channel for segmentation
+    # The detection outputs come from a separate path in the UNet3D class
     model = UNet3D(in_channels=1, out_channels=1).to(device)
     
     # Initialize model weights properly
@@ -675,9 +617,8 @@ def main():
     metrics_dir = Path(__file__).parent / "model_metrics"
     save_model_architecture(model, metrics_dir)
     
-    # Loss functions
-    seg_criterion = CombinedBCEDiceLoss(bce_weight=0.5, dice_weight=0.5)  # still used for eval
-    det_criterion = nn.MSELoss()  # detection-only training
+    # Loss function for detection only
+    criterion = nn.MSELoss()
     
     # Lower learning rate and adjusted optimizer parameters
     optimizer = optim.Adam(
@@ -692,20 +633,20 @@ def main():
         optimizer,
         mode='min',
         factor=0.2,  # Larger reduction in learning rate
-        patience=15,  # More patience
+        patience=5,  # More patience
         verbose=True,
         min_lr=1e-7  # Minimum learning rate
     )
     
     # Training parameters
-    num_epochs = 200  # More epochs
+    num_epochs = 10  # REDUCED FROM 200 TO 10
     # Save under models/ next to this script
     models_dir = Path(__file__).parent / "models"
     models_dir.mkdir(exist_ok=True)
-    best_model_path = models_dir / "best_model.pth"
+    best_model_path = models_dir / "best_model_detection_only.pth"
     
     # Early stopping parameters
-    early_stopping_patience = 25
+    early_stopping_patience = 5
     no_improvement_count = 0
     best_val_detection_accuracy = 0.0
     
@@ -718,8 +659,8 @@ def main():
     val_data   = preload_data(val_dataset, val_loader, logger)
 
     # Prepare to record detection accuracy per epoch
-    train_acc_history = []
-    val_acc_history   = []
+    train_loss_history = []
+    val_acc_history = []
 
     try:
         for epoch in range(num_epochs):
@@ -727,35 +668,35 @@ def main():
             
             # Detection-only training
             train_detection_mse = train_preloaded(
-                model, train_data, det_criterion, optimizer, device, logger
+                model, train_data, criterion, optimizer, device, logger
             )
 
-            # Full eval
-            val_loss, val_dice, val_detection_accuracy = evaluate_preloaded(
-                model, val_data, seg_criterion, device, logger
+            # Validation 
+            val_loss, val_detection_accuracy = evaluate_preloaded(
+                model, val_data, criterion, device, logger
             )
             scheduler.step(val_loss)
             
-            # Record detection accuracy on train & val sets
-            _, _, train_detection_accuracy = evaluate_preloaded(
-                model, train_data, seg_criterion, device, logger
-            )
-            train_acc_history.append(train_detection_accuracy)
+            # Record metrics
+            train_loss_history.append(train_detection_mse)
             val_acc_history.append(val_detection_accuracy)
             
-            if val_dice > best_val_detection_accuracy:
-                best_val_detection_accuracy = val_dice
+            # Save best model with error handling
+            if val_detection_accuracy > best_val_detection_accuracy:
+                best_val_detection_accuracy = val_detection_accuracy
                 no_improvement_count = 0
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'train_detection_mse': train_detection_mse,
-                    'val_loss':   val_loss,
-                    'val_dice':   val_dice,
-                    'val_detection_accuracy': val_detection_accuracy
-                }, best_model_path)
-                logger.info(f"Saved best model with validation Dice score: {val_dice:.4f}")
+                try:
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'train_detection_mse': train_detection_mse,
+                        'val_loss': val_loss,
+                        'val_detection_accuracy': val_detection_accuracy
+                    }, best_model_path)
+                    logger.info(f"Saved best model with validation detection accuracy: {val_detection_accuracy:.4f}%")
+                except Exception as e:
+                    logger.error(f"Failed to save best model: {e}")
             else:
                 no_improvement_count += 1
             
@@ -763,46 +704,78 @@ def main():
             if no_improvement_count >= early_stopping_patience:
                 logger.info(f"Early stopping triggered after {epoch+1} epochs")
                 break
-            
-            # Save checkpoint every 10 epochs
-            if (epoch + 1) % 10 == 0:
-                checkpoint_path = models_dir / f"checkpoint_epoch_{epoch+1}.pth"
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'train_detection_mse': train_detection_mse,
-                    'val_loss': val_loss,
-                    'val_dice': val_dice,
-                    'val_detection_accuracy': val_detection_accuracy
-                }, checkpoint_path)
-                logger.info(f"Saved checkpoint at epoch {epoch+1}")
     
     except KeyboardInterrupt:
         logger.info("Training interrupted by user; plotting partial results.")
     finally:
-        # Plot detection accuracy curves over epochs
+        # Plot training metrics
         try:
-            plt.figure(figsize=(8,6))
-            epochs_list = list(range(1, len(train_acc_history) + 1))
-            plt.plot(epochs_list, train_acc_history, label="Train Det Acc")
-            plt.plot(epochs_list, val_acc_history,   label="Val   Det Acc")
-            plt.xlabel("Epoch")
-            plt.ylabel("Detection Accuracy (%)")
-            plt.title("Detection Accuracy Over Epochs")
-            plt.legend()
+            # Create a figure with two y-axes
+            fig, ax1 = plt.subplots(figsize=(10, 6))
+            ax2 = ax1.twinx()
+            
+            epochs_list = list(range(1, len(train_loss_history) + 1))
+            
+            # Plot training loss on left axis
+            ax1.plot(epochs_list, train_loss_history, 'b-', label='Training Loss (MSE)')
+            ax1.set_xlabel('Epoch')
+            ax1.set_ylabel('Training Loss', color='b')
+            ax1.tick_params(axis='y', labelcolor='b')
+            
+            # Plot validation accuracy on right axis
+            ax2.plot(epochs_list, val_acc_history, 'r-', label='Validation Accuracy (%)')
+            ax2.set_ylabel('Detection Accuracy (%)', color='r')
+            ax2.tick_params(axis='y', labelcolor='r')
+            
+            # Add legends
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines1 + lines2, labels1 + labels2, loc='best')
+            
+            plt.title('Training Loss vs Validation Accuracy')
             plt.grid(True)
             plt.tight_layout()
-            plt.savefig(metrics_dir / "accuracy_over_epochs.png")
+            plt.savefig(metrics_dir / "training_metrics.png")
             plt.close()
-            logger.info(f"Saved accuracy_over_epochs.png with {len(epochs_list)} points")
+            logger.info(f"Saved training_metrics.png")
         except Exception as e:
-            logger.warning(f"Failed to plot accuracy curves: {e}")
+            logger.warning(f"Failed to plot metrics: {e}")
 
         # Final timing and summary
         training_time = time.time() - start_time
-        logger.info(f"Training ended after {len(train_acc_history)} epochs in {training_time/60:.2f} minutes")
+        logger.info(f"Training ended after {len(train_loss_history)} epochs in {training_time/60:.2f} minutes")
         logger.info(f"Best validation Detection Accuracy: {best_val_detection_accuracy:.2f}%")
+        
+        # Try loading the best model, but use current model if loading fails
+        logger.info("Loading best model for visualization...")
+        best_loaded = False
+        
+        if os.path.exists(best_model_path):
+            try:
+                checkpoint = torch.load(best_model_path, map_location=device)
+                model.load_state_dict(checkpoint['model_state_dict'])
+                best_epoch = checkpoint['epoch']
+                best_accuracy = checkpoint['val_detection_accuracy']
+                logger.info(f"Loaded best model from epoch {best_epoch+1} with accuracy {best_accuracy:.2f}%")
+                best_loaded = True
+            except Exception as e:
+                logger.warning(f"Failed to load best model: {e}. Using current model instead.")
+        
+        if not best_loaded:
+            logger.info("Using current model state for visualizations.")
+        
+        # Create visualization directory
+        vis_dir = Path(__file__).parent / "visualizations"
+        vis_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Select 5 random samples from validation set for visualization
+        logger.info("Selecting 5 random samples for visualization...")
+        val_samples = random.sample(val_data, min(5, len(val_data)))
+        
+        # Visualize detection results
+        logger.info("Generating visualizations...")
+        visualize_detection_results(model, val_samples, device, vis_dir)
+        logger.info(f"Saved visualizations to {vis_dir}")
 
 if __name__ == "__main__":
     main() 
